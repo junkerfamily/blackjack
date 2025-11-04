@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blackjack Cards - Test Page</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cards.css') }}">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f5132 0%, #1a5f3f 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #f5f5dc;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #ffd700;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        
+        .test-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .test-section h2 {
+            color: #ffd700;
+            margin-bottom: 15px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        
+        button {
+            background: #ffd700;
+            color: #1a1a1a;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #ffed4e;
+        }
+        
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        
+        .deck-area {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        
+        .info {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🃏 Blackjack Card Rendering Test</h1>
+        
+        <!-- Test 1: Single Card -->
+        <div class="test-section">
+            <h2>Test 1: Single Card Display</h2>
+            <div class="controls">
+                <button onclick="showRandomCard()">Show Random Card</button>
+                <button onclick="showCard('hearts', 'A')">Ace of Hearts</button>
+                <button onclick="showCard('spades', 'K')">King of Spades</button>
+                <button onclick="clearCard()">Clear</button>
+            </div>
+            <div id="single-card-container" class="card-hand"></div>
+        </div>
+        
+        <!-- Test 2: All Suits -->
+        <div class="test-section">
+            <h2>Test 2: All Suits</h2>
+            <div class="controls">
+                <button onclick="showAllSuits()">Show All Suits (Ace)</button>
+                <button onclick="clearSuits()">Clear</button>
+            </div>
+            <div id="suits-container" class="card-hand"></div>
+        </div>
+        
+        <!-- Test 3: Complete Deck -->
+        <div class="test-section">
+            <h2>Test 3: Complete Deck (52 Cards)</h2>
+            <div class="controls">
+                <button onclick="showCompleteDeck()">Show All 52 Cards</button>
+                <button onclick="clearDeck()">Clear</button>
+            </div>
+            <div id="deck-container" class="card-hand"></div>
+        </div>
+        
+        <!-- Test 4: Hidden Cards -->
+        <div class="test-section">
+            <h2>Test 4: Hidden Cards (Card Back)</h2>
+            <div class="controls">
+                <button onclick="showHiddenCards()">Show 3 Hidden Cards</button>
+                <button onclick="revealHiddenCards()">Reveal All</button>
+                <button onclick="clearHidden()">Clear</button>
+            </div>
+            <div id="hidden-container" class="card-hand"></div>
+        </div>
+        
+        <!-- Test 5: Deal Animation -->
+        <div class="test-section">
+            <h2>Test 5: Deal Animation</h2>
+            <div class="controls">
+                <button onclick="dealCards()">Deal 5 Cards</button>
+                <button onclick="clearDeal()">Clear</button>
+            </div>
+            <div id="deal-container" class="card-hand"></div>
+        </div>
+        
+        <!-- Test 6: Player Hand -->
+        <div class="test-section">
+            <h2>Test 6: Player Hand Example</h2>
+            <div class="controls">
+                <button onclick="createPlayerHand()">Create Player Hand</button>
+                <button onclick="playerHit()">Hit (Add Card)</button>
+                <button onclick="clearPlayerHand()">Clear</button>
+            </div>
+            <div id="player-hand-container" class="card-hand"></div>
+            <div class="info">
+                <strong>Hand Value:</strong> <span id="hand-value">0</span>
+            </div>
+        </div>
+        
+        <!-- Test 7: Dealer Hand -->
+        <div class="test-section">
+            <h2>Test 7: Dealer Hand (Hidden Hole Card)</h2>
+            <div class="controls">
+                <button onclick="createDealerHand()">Create Dealer Hand</button>
+                <button onclick="revealDealerHole()">Reveal Hole Card</button>
+                <button onclick="clearDealerHand()">Clear</button>
+            </div>
+            <div id="dealer-hand-container" class="card-hand"></div>
+        </div>
+        
+        <!-- Test 8: Win/Loss Animations -->
+        <div class="test-section">
+            <h2>Test 8: Win/Loss Animations</h2>
+            <div class="controls">
+                <button onclick="createWinHand()">Create Winning Hand</button>
+                <button onclick="createLossHand()">Create Losing Hand</button>
+                <button onclick="clearWinLoss()">Clear</button>
+            </div>
+            <div id="winloss-container" class="card-hand"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/card.js') }}"></script>
+    <script>
+        // Test data
+        const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
+        const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+        
+        function getCardValue(rank) {
+            if (rank === 'A') return 11;
+            if (['J', 'Q', 'K'].includes(rank)) return 10;
+            return parseInt(rank);
+        }
+        
+        function createCardData(suit, rank) {
+            return {
+                suit: suit,
+                rank: rank,
+                value: getCardValue(rank)
+            };
+        }
+        
+        // Test 1: Single Card
+        let singleCardManager = null;
+        
+        function showRandomCard() {
+            if (singleCardManager) singleCardManager.clear();
+            singleCardManager = new CardManager('#single-card-container');
+            
+            const suit = suits[Math.floor(Math.random() * suits.length)];
+            const rank = ranks[Math.floor(Math.random() * ranks.length)];
+            singleCardManager.addCard(createCardData(suit, rank));
+        }
+        
+        function showCard(suit, rank) {
+            if (singleCardManager) singleCardManager.clear();
+            singleCardManager = new CardManager('#single-card-container');
+            singleCardManager.addCard(createCardData(suit, rank));
+        }
+        
+        function clearCard() {
+            if (singleCardManager) {
+                singleCardManager.clear();
+                singleCardManager = null;
+            }
+        }
+        
+        // Test 2: All Suits
+        let suitsManager = null;
+        
+        function showAllSuits() {
+            if (suitsManager) suitsManager.clear();
+            suitsManager = new CardManager('#suits-container');
+            
+            suits.forEach(suit => {
+                suitsManager.addCard(createCardData(suit, 'A'));
+            });
+        }
+        
+        function clearSuits() {
+            if (suitsManager) {
+                suitsManager.clear();
+                suitsManager = null;
+            }
+        }
+        
+        // Test 3: Complete Deck
+        let deckManager = null;
+        
+        function showCompleteDeck() {
+            if (deckManager) deckManager.clear();
+            deckManager = new CardManager('#deck-container');
+            
+            suits.forEach(suit => {
+                ranks.forEach(rank => {
+                    deckManager.addCard(createCardData(suit, rank));
+                });
+            });
+        }
+        
+        function clearDeck() {
+            if (deckManager) {
+                deckManager.clear();
+                deckManager = null;
+            }
+        }
+        
+        // Test 4: Hidden Cards
+        let hiddenManager = null;
+        
+        function showHiddenCards() {
+            if (hiddenManager) hiddenManager.clear();
+            hiddenManager = new CardManager('#hidden-container');
+            
+            for (let i = 0; i < 3; i++) {
+                const suit = suits[Math.floor(Math.random() * suits.length)];
+                const rank = ranks[Math.floor(Math.random() * ranks.length)];
+                hiddenManager.addCard(createCardData(suit, rank), true);
+            }
+        }
+        
+        function revealHiddenCards() {
+            if (hiddenManager) {
+                hiddenManager.revealAll(100);
+            }
+        }
+        
+        function clearHidden() {
+            if (hiddenManager) {
+                hiddenManager.clear();
+                hiddenManager = null;
+            }
+        }
+        
+        // Test 5: Deal Animation
+        let dealManager = null;
+        
+        function dealCards() {
+            if (dealManager) dealManager.clear();
+            dealManager = new CardManager('#deal-container');
+            
+            for (let i = 0; i < 5; i++) {
+                const suit = suits[Math.floor(Math.random() * suits.length)];
+                const rank = ranks[Math.floor(Math.random() * ranks.length)];
+                dealManager.dealCard(createCardData(suit, rank), false, i * 150);
+            }
+        }
+        
+        function clearDeal() {
+            if (dealManager) {
+                dealManager.clear();
+                dealManager = null;
+            }
+        }
+        
+        // Test 6: Player Hand
+        let playerManager = null;
+        let playerHandValue = 0;
+        
+        function createPlayerHand() {
+            if (playerManager) playerManager.clear();
+            playerManager = new CardManager('#player-hand-container');
+            playerHandValue = 0;
+            updateHandValue();
+            
+            // Deal two cards
+            const card1 = createCardData(suits[Math.floor(Math.random() * suits.length)], ranks[Math.floor(Math.random() * ranks.length)]);
+            const card2 = createCardData(suits[Math.floor(Math.random() * suits.length)], ranks[Math.floor(Math.random() * ranks.length)]);
+            
+            playerManager.dealCard(card1, false, 0);
+            playerManager.dealCard(card2, false, 150);
+            
+            playerHandValue = card1.value + card2.value;
+            updateHandValue();
+        }
+        
+        function playerHit() {
+            if (!playerManager) return;
+            
+            const suit = suits[Math.floor(Math.random() * suits.length)];
+            const rank = ranks[Math.floor(Math.random() * ranks.length)];
+            const card = createCardData(suit, rank);
+            
+            const delay = playerManager.getCount() * 150;
+            const newCard = playerManager.addCard(card, false, delay);
+            newCard.animateHit();
+            
+            playerHandValue += card.value;
+            updateHandValue();
+        }
+        
+        function updateHandValue() {
+            document.getElementById('hand-value').textContent = playerHandValue;
+        }
+        
+        function clearPlayerHand() {
+            if (playerManager) {
+                playerManager.clear();
+                playerManager = null;
+                playerHandValue = 0;
+                updateHandValue();
+            }
+        }
+        
+        // Test 7: Dealer Hand
+        let dealerManager = null;
+        
+        function createDealerHand() {
+            if (dealerManager) dealerManager.clear();
+            dealerManager = new CardManager('#dealer-hand-container');
+            
+            // Dealer gets two cards, first is hidden
+            const card1 = createCardData(suits[Math.floor(Math.random() * suits.length)], ranks[Math.floor(Math.random() * ranks.length)]);
+            const card2 = createCardData(suits[Math.floor(Math.random() * suits.length)], ranks[Math.floor(Math.random() * ranks.length)]);
+            
+            dealerManager.dealCard(card1, true, 0);  // Hidden hole card
+            dealerManager.dealCard(card2, false, 150);
+        }
+        
+        function revealDealerHole() {
+            if (dealerManager && dealerManager.getCount() > 0) {
+                dealerManager.revealCard(0);
+            }
+        }
+        
+        function clearDealerHand() {
+            if (dealerManager) {
+                dealerManager.clear();
+                dealerManager = null;
+            }
+        }
+        
+        // Test 8: Win/Loss
+        let winlossManager = null;
+        
+        function createWinHand() {
+            if (winlossManager) winlossManager.clear();
+            winlossManager = new CardManager('#winloss-container');
+            
+            // Create a blackjack (A + K)
+            winlossManager.addCard(createCardData('hearts', 'A'));
+            winlossManager.addCard(createCardData('spades', 'K'));
+            
+            setTimeout(() => {
+                winlossManager.animateWin();
+            }, 500);
+        }
+        
+        function createLossHand() {
+            if (winlossManager) winlossManager.clear();
+            winlossManager = new CardManager('#winloss-container');
+            
+            // Create a bust hand
+            winlossManager.addCard(createCardData('hearts', 'K'));
+            winlossManager.addCard(createCardData('diamonds', 'Q'));
+            winlossManager.addCard(createCardData('clubs', 'J'));
+            
+            setTimeout(() => {
+                winlossManager.animateLoss();
+            }, 500);
+        }
+        
+        function clearWinLoss() {
+            if (winlossManager) {
+                winlossManager.clear();
+                winlossManager.resetAnimations();
+                winlossManager = null;
+            }
+        }
+    </script>
+</body>
+</html>
+

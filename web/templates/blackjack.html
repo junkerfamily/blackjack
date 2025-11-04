@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Casino Blackjack</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cards.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/blackjack.css') }}">
+</head>
+<body>
+    <div class="casino-table">
+        <!-- Header -->
+        <header class="table-header">
+            <h1>🎰 CASINO BLACKJACK</h1>
+        </header>
+
+        <!-- Dealer Area -->
+        <section class="dealer-area">
+            <div id="dealer-hand" class="card-hand"></div>
+            
+            <!-- Dealer Info Bar -->
+            <div class="dealer-display">
+                <div class="dealer-info-in-bar">
+                    <span class="area-label-inline">DEALER</span>
+                    <span class="hand-value-inline" id="dealer-value">Value: ?</span>
+                </div>
+                <div class="game-message" id="game-message"></div>
+            </div>
+        </section>
+
+        <!-- Player Area -->
+        <section class="player-area">
+            <div id="player-hand" class="card-hand"></div>
+            
+            <!-- Current Bet Display with Player Info -->
+            <div class="bet-display">
+                <div class="player-info-in-bar">
+                    <span class="area-label-inline">PLAYER</span>
+                    <span class="hand-value-inline" id="player-value">Value: 0</span>
+                </div>
+                <div class="bet-info">
+                    <span class="bet-label">Current Bet:</span>
+                    <span class="bet-amount" id="current-bet">$0</span>
+                    <button class="btn-clear-bet" id="clear-bet-btn" onclick="clearBet()">Clear Bet</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Betting Area -->
+        <section class="betting-area" id="betting-area">
+            <div class="betting-label">Place Your Bet</div>
+            <div class="chip-tray">
+                <button class="chip" data-value="1" onclick="selectChip(1)">
+                    <span class="chip-value">$1</span>
+                </button>
+                <button class="chip" data-value="5" onclick="selectChip(5)">
+                    <span class="chip-value">$5</span>
+                </button>
+                <button class="chip" data-value="10" onclick="selectChip(10)">
+                    <span class="chip-value">$10</span>
+                </button>
+                <button class="chip" data-value="25" onclick="selectChip(25)">
+                    <span class="chip-value">$25</span>
+                </button>
+                <button class="chip" data-value="100" onclick="selectChip(100)">
+                    <span class="chip-value">$100</span>
+                </button>
+                <button class="chip" data-value="500" onclick="selectChip(500)">
+                    <span class="chip-value">$500</span>
+                </button>
+            </div>
+            <div class="betting-controls">
+                <button class="btn-primary" id="deal-btn" onclick="dealCards()">Deal Cards</button>
+            </div>
+        </section>
+
+        <!-- Game Controls -->
+        <section class="game-controls" id="game-controls" style="display: none;">
+            <button class="btn-action" id="hit-btn" onclick="playerHit()">Hit</button>
+            <button class="btn-action" id="stand-btn" onclick="playerStand()">Stand</button>
+            <button class="btn-action" id="double-btn" onclick="playerDoubleDown()">Double Down</button>
+            <button class="btn-action" id="split-btn" onclick="playerSplit()" style="display: none;">Split</button>
+        </section>
+
+        <!-- Game Management -->
+        <section class="game-management">
+            <button class="btn-secondary" id="new-game-btn" onclick="newGame()">New Game</button>
+            <button class="btn-secondary" id="refresh-bankroll-btn" onclick="refreshBankroll()">Refresh Bankroll</button>
+            <div class="balance-display-inline">
+                <span class="balance-label">Balance:</span>
+                <span class="balance-amount" id="balance">$1,000</span>
+            </div>
+        </section>
+
+        <!-- Game History Panel -->
+        <section class="game-history-panel">
+            <div class="history-header">📊 Game History (Last 5)</div>
+            <div class="history-list" id="history-list">
+                <div class="history-item-empty">No games yet</div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay" style="display: none;">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Processing...</div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/card.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/blackjack.js') }}"></script>
+</body>
+</html>
+

@@ -1,0 +1,250 @@
+/* Blackjack Card Styles and Animations */
+
+.card {
+    width: 70px;
+    height: 100px;
+    position: relative;
+    perspective: 1000px;
+    cursor: pointer;
+    display: inline-block;
+    margin: 0 3px;
+}
+
+/* Responsive sizing for mobile */
+@media (max-width: 768px) {
+    .card {
+        width: 60px;
+        height: 85px;
+    }
+}
+
+.card-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.5s;
+}
+
+.card.flipped .card-inner {
+    transform: rotateY(180deg);
+}
+
+.card-front,
+.card-back {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 6px;
+}
+
+.card-front {
+    background: #ffffff;
+    color: #212529;
+    border: 2px solid #e0e0e0;
+}
+
+.card-back {
+    background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
+    transform: rotateY(180deg);
+    border: 2px solid #1a237e;
+}
+
+/* Card back pattern */
+.card-back-pattern {
+    width: 100%;
+    height: 100%;
+    background-image: 
+        repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px),
+        repeating-linear-gradient(-45deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px);
+    border-radius: 6px;
+}
+
+/* Card rank display */
+.card-rank-top,
+.card-rank-bottom {
+    font-size: 18px;
+    font-weight: bold;
+    line-height: 1;
+}
+
+.card-rank-top {
+    text-align: left;
+}
+
+.card-rank-bottom {
+    text-align: left;
+    transform: rotate(180deg);
+    align-self: flex-end;
+}
+
+/* Card suit display */
+.card-suit {
+    font-size: 32px;
+    text-align: center;
+    line-height: 1;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Suit colors */
+.card.suit-hearts .card-front,
+.card.suit-diamonds .card-front {
+    color: #dc3545;
+}
+
+.card.suit-clubs .card-front,
+.card.suit-spades .card-front {
+    color: #212529;
+}
+
+/* Hand container */
+.card-hand {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    min-height: 120px;
+    padding: 20px;
+}
+
+/* Deal animation */
+@keyframes dealCard {
+    from {
+        opacity: 0;
+        transform: translateX(-200px) translateY(-100px) rotate(-10deg) scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0) translateY(0) rotate(0deg) scale(1);
+    }
+}
+
+.card.dealing {
+    animation: dealCard 0.5s ease-out forwards;
+}
+
+/* Flip animation */
+@keyframes flipCard {
+    0% {
+        transform: rotateY(0deg);
+    }
+    50% {
+        transform: rotateY(90deg);
+    }
+    100% {
+        transform: rotateY(180deg);
+    }
+}
+
+.card.flipping {
+    animation: flipCard 0.5s ease-in-out forwards;
+}
+
+/* Shuffle animation */
+@keyframes shuffle {
+    0%, 100% {
+        transform: translateX(0) rotate(0deg);
+    }
+    25% {
+        transform: translateX(-5px) rotate(-2deg);
+    }
+    75% {
+        transform: translateX(5px) rotate(2deg);
+    }
+}
+
+.card-hand.shuffling {
+    animation: shuffle 0.3s ease-in-out;
+}
+
+/* Win animation */
+@keyframes winGlow {
+    0%, 100% {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(40, 167, 69, 0.8), 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+}
+
+.card-hand.winning .card {
+    animation: winGlow 1s ease-in-out infinite;
+}
+
+/* Loss animation */
+@keyframes lossFade {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0.4;
+    }
+}
+
+.card-hand.losing .card {
+    animation: lossFade 1s ease-in-out forwards;
+}
+
+/* Hit animation */
+@keyframes hitCard {
+    0% {
+        opacity: 0;
+        transform: translateY(-50px) scale(0.5) rotate(-15deg);
+    }
+    60% {
+        transform: translateY(5px) scale(1.05) rotate(2deg);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1) rotate(0deg);
+    }
+}
+
+.card.hitting {
+    animation: hitCard 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+}
+
+/* Deck area */
+.deck-area {
+    position: relative;
+    width: 80px;
+    height: 110px;
+    margin: 20px auto;
+}
+
+.deck-card {
+    position: absolute;
+    width: 70px;
+    height: 100px;
+    background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
+    border-radius: 8px;
+    border: 2px solid #1a237e;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 24px;
+}
+
+.deck-card:nth-child(1) {
+    transform: translate(0, 0);
+}
+
+.deck-card:nth-child(2) {
+    transform: translate(2px, 2px);
+}
+
+.deck-card:nth-child(3) {
+    transform: translate(4px, 4px);
+}
+

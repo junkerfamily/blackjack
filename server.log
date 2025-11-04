@@ -1,0 +1,136 @@
+✅ Blackjack blueprint registered successfully
+⚠️  Port 5000 is already in use. Finding a free port...
+✅ Using port 5001 instead
+
+🚀 Blackjack server starting on port 5001
+📍 Game: http://localhost:5001/blackjack
+📍 Card test: http://localhost:5001/cards-test
+
+Press Ctrl+C to stop the server
+
+ * Serving Flask app 'app_blackjack_only'
+ * Debug mode: on
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.1.221:5001
+[33mPress CTRL+C to quit[0m
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 144-298-944
+127.0.0.1 - - [03/Nov/2025 21:56:57] "GET /blackjack HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 21:56:57] "[36mGET /static/js/card.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [03/Nov/2025 21:56:57] "[36mGET /static/css/cards.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [03/Nov/2025 21:56:57] "[36mGET /static/js/blackjack.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [03/Nov/2025 21:56:57] "GET /static/css/blackjack.css HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 21:56:57] "POST /api/new_game HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 21:57:11] "POST /api/bet HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 21:57:11] "POST /api/deal HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 21:57:19] "POST /api/hit HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 21:57:21] "POST /api/hit HTTP/1.1" 200 -
+✅ Blackjack blueprint registered successfully
+⚠️  Port 5000 is already in use. Finding a free port...
+✅ Using port 5002 instead
+
+🚀 Blackjack server starting on port 5002
+📍 Game: http://localhost:5002/blackjack
+📍 Card test: http://localhost:5002/cards-test
+
+Press Ctrl+C to stop the server
+
+💵 Placing bet: $100, chips before=$1000, chips after=$900
+🎯 Determining results: dealer_value=21, dealer_bust=False, player_hands=1
+  Processing hand 0: value=21, bust=False, bet=$100
+    → Hand 0 PUSH (21 == 21) - calling push()
+🤝 Push: hand_index=0, bet=$100, chips before=$900, chips after=$1000 (bet returned)
+✅ Final result: push, player chips: $1000
+127.0.0.1 - - [03/Nov/2025 21:57:25] "POST /api/stand HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 21:57:25] "GET /api/game_state?game_id=17d4c6d0-eed3-42c6-84de-683a07e4e072 HTTP/1.1" 200 -
+ * Detected change in '/Users/danjunker/Library/Mobile Documents/com~apple~CloudDocs/Projects/BlackJack/tests/test_regressions.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 144-298-944
+ * Detected change in '/Users/danjunker/Library/Mobile Documents/com~apple~CloudDocs/Projects/BlackJack/tests/test_regressions.py', reloading
+✅ Blackjack blueprint registered successfully
+⚠️  Port 5000 is already in use. Finding a free port...
+✅ Using port 5002 instead
+
+🚀 Blackjack server starting on port 5002
+📍 Game: http://localhost:5002/blackjack
+📍 Card test: http://localhost:5002/cards-test
+
+Press Ctrl+C to stop the server
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 144-298-944
+ * Detected change in '/Users/danjunker/Library/Mobile Documents/com~apple~CloudDocs/Projects/BlackJack/tests/test_regressions.py', reloading
+✅ Blackjack blueprint registered successfully
+⚠️  Port 5000 is already in use. Finding a free port...
+✅ Using port 5002 instead
+
+🚀 Blackjack server starting on port 5002
+📍 Game: http://localhost:5002/blackjack
+📍 Card test: http://localhost:5002/cards-test
+
+Press Ctrl+C to stop the server
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 144-298-944
+ * Detected change in '/Users/danjunker/Library/Mobile Documents/com~apple~CloudDocs/Projects/BlackJack/tests/test_regressions.py', reloading
+✅ Blackjack blueprint registered successfully
+⚠️  Port 5000 is already in use. Finding a free port...
+✅ Using port 5002 instead
+
+🚀 Blackjack server starting on port 5002
+📍 Game: http://localhost:5002/blackjack
+📍 Card test: http://localhost:5002/cards-test
+
+Press Ctrl+C to stop the server
+
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 144-298-944
+127.0.0.1 - - [03/Nov/2025 22:58:29] "GET /blackjack HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 22:58:29] "[36mGET /static/css/blackjack.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [03/Nov/2025 22:58:29] "[36mGET /static/css/cards.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [03/Nov/2025 22:58:29] "[36mGET /static/js/blackjack.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [03/Nov/2025 22:58:29] "[36mGET /static/js/card.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [03/Nov/2025 22:58:29] "POST /api/new_game HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 22:58:35] "POST /api/bet HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 22:58:35] "POST /api/deal HTTP/1.1" 200 -
+✅ Blackjack blueprint registered successfully
+⚠️  Port 5000 is already in use. Finding a free port...
+✅ Using port 5002 instead
+
+🚀 Blackjack server starting on port 5002
+📍 Game: http://localhost:5002/blackjack
+📍 Card test: http://localhost:5002/cards-test
+
+Press Ctrl+C to stop the server
+
+💵 Placing bet: $100, chips before=$1000, chips after=$900
+🎯 Determining results: dealer_value=18, dealer_bust=False, player_hands=1
+  Processing hand 0: value=17, bust=False, bet=$100
+    → Hand 0 LOSES (17 < 18) - calling lose()
+💸 Loss: hand_index=0, bet=$100, chips before=$900, chips after=$900 (bet already deducted)
+✅ Final result: loss, player chips: $900
+127.0.0.1 - - [03/Nov/2025 22:58:38] "POST /api/stand HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 22:58:38] "GET /api/game_state?game_id=530f3958-70cf-477b-924d-81a7bbe35587 HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 22:58:48] "POST /api/new_game HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 22:58:52] "POST /api/bet HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 22:58:52] "POST /api/deal HTTP/1.1" 200 -
+💵 Placing bet: $500, chips before=$900, chips after=$400
+🎯 Determining results: dealer_value=17, dealer_bust=False, player_hands=1
+  Processing hand 0: value=19, bust=False, bet=$500
+    → Hand 0 WINS (19 > 17) - calling win()
+💰 Win payout: hand_index=0, bet=$500, is_blackjack=False, payout=$1000, chips before=$400, chips after=$1400
+✅ Final result: win, player chips: $1400
+127.0.0.1 - - [03/Nov/2025 22:58:56] "POST /api/stand HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 22:58:56] "GET /api/game_state?game_id=530f3958-70cf-477b-924d-81a7bbe35587 HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 22:59:06] "POST /api/new_game HTTP/1.1" 200 -
+127.0.0.1 - - [03/Nov/2025 22:59:10] "POST /api/bet HTTP/1.1" 200 -
+💵 Placing bet: $500, chips before=$1400, chips after=$900
+💰 Win payout: hand_index=0, bet=$500, is_blackjack=True, payout=$1250, chips before=$900, chips after=$2150
+127.0.0.1 - - [03/Nov/2025 22:59:11] "POST /api/deal HTTP/1.1" 200 -
