@@ -14,6 +14,8 @@ class BlackjackGame {
         this.isProcessing = false;
         this.previousBalance = 1000; // Track balance for logging changes
         this.gameHistory = []; // Track game history for the panel
+        this.defaultBetAmount = null; // Default bet amount for quick play
+        this.defaultBetStorageKey = 'blackjack_default_bet';
         this.hecklerElement = null;
         this.hecklerTimeout = null;
         this.hecklerRemoveTimeout = null;
@@ -803,12 +805,25 @@ class BlackjackGame {
      * Setup chip selection handlers
      */
     setupChipSelection() {
+        // Load default bet from localStorage
+        this.loadDefaultBet();
+        
         document.querySelectorAll('.chip').forEach(chip => {
             chip.addEventListener('click', (e) => {
                 const value = parseInt(e.currentTarget.dataset.value);
                 this.selectChip(value);
             });
+            
+            // Add right-click context menu for setting default bet
+            chip.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                const value = parseInt(e.currentTarget.dataset.value);
+                this.setDefaultBet(value);
+            });
         });
+        
+        // Update visual indicators
+        this.updateDefaultBetDisplay();
     }
 
     /**
@@ -1109,6 +1124,13 @@ class BlackjackGame {
      */
     async dealCards() {
         this.log('Starting dealCards process', 'deal');
+        
+        // Auto-place default bet if no bet and default bet is set
+        if (this.currentBet <= 0 && this.defaultBetAmount) {
+            this.log(`📌 Auto-placing default bet: $${this.defaultBetAmount}`, 'action');
+            this.currentBet = this.defaultBetAmount;
+            this.updateBetDisplay();
+        }
         
         if (this.currentBet <= 0) {
             this.log('DEAL DENIED: No bet placed', 'warn');
@@ -2164,6 +2186,65 @@ class BlackjackGame {
             
             historyList.appendChild(historyItem);
         });
+    }
+
+    /**
+     * Load default bet from localStorage
+     */
+    loadDefaultBet() {
+        try {
+            const stored = localStorage.getItem(this.defaultBetStorageKey);
+            if (stored) {
+                this.defaultBetAmount = parseInt(stored);
+                this.log(`💾 Default bet loaded: $${this.defaultBetAmount}`, 'info');
+            }
+        } catch (error) {
+            console.warn('Failed to load default bet:', error);
+        }
+    }
+
+    /**
+     * Save default bet to localStorage
+     */
+    saveDefaultBet() {
+        try {
+            if (this.defaultBetAmount) {
+                localStorage.setItem(this.defaultBetStorageKey, this.defaultBetAmount.toString());
+            }
+        } catch (error) {
+            console.warn('Failed to save default bet:', error);
+        }
+    }
+
+    /**
+     * Set a chip as the default bet
+     */
+    setDefaultBet(value) {
+        this.defaultBetAmount = value;
+        this.saveDefaultBet();
+        this.updateDefaultBetDisplay();
+        this.log(`💰 Default bet set to $${value}`, 'action');
+        this.showMessage(`Default bet set to $${value}`, 'success');
+    }
+
+    /**
+     * Update visual display of default bet indicator
+     */
+    updateDefaultBetDisplay() {
+        // Remove previous default indicator
+        document.querySelectorAll('.chip').forEach(chip => {
+            chip.classList.remove('default-bet');
+            chip.removeAttribute('data-default');
+        });
+        
+        // Add indicator to default bet chip
+        if (this.defaultBetAmount) {
+            const defaultChip = document.querySelector(`.chip[data-value="${this.defaultBetAmount}"]`);
+            if (defaultChip) {
+                defaultChip.classList.add('default-bet');
+                defaultChip.setAttribute('data-default', 'true');
+            }
+        }
     }
 }
 

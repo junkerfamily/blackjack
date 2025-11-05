@@ -545,6 +545,49 @@ body {
     box-shadow: 0 0 12px var(--gold);
 }
 
+.chip.default-bet {
+    position: relative;
+    border-color: var(--gold);
+    border-width: 4px;
+    box-shadow: 0 0 16px var(--gold), inset 0 0 8px var(--gold);
+    animation: pulse-default 2s ease-in-out infinite;
+}
+
+.chip.default-bet::after {
+    content: '★';
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    font-size: 1.4em;
+    color: var(--gold);
+    text-shadow: 0 0 8px rgba(255, 215, 0, 0.8);
+    animation: star-pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse-default {
+    0%, 100% {
+        box-shadow: 0 0 16px var(--gold), inset 0 0 8px var(--gold);
+    }
+    50% {
+        box-shadow: 0 0 24px var(--gold), inset 0 0 12px var(--gold);
+    }
+}
+
+@keyframes star-pulse {
+    0%, 100% {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.2) rotate(10deg);
+        opacity: 0.8;
+    }
+}
+
+.chip.default-bet:hover {
+    cursor: pointer;
+}
+
 /* Game Controls */
 .game-controls {
     display: flex;
