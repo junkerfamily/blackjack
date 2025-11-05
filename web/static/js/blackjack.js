@@ -1274,19 +1274,16 @@ class BlackjackGame {
     async playerHit() {
         if (!this.gameId) {
             this.log('HIT DENIED: No gameId', 'warn');
-            this.showMessage('Cannot hit: No active game', 'error');
             return;
         }
         
         if (this.isProcessing) {
             this.log('HIT DENIED: Already processing another action', 'warn');
-            this.showMessage('Please wait, processing previous action...', 'warn');
             return;
         }
         
         if (this.gameState?.state !== 'player_turn') {
             this.log(`HIT DENIED: Game state is "${this.gameState?.state}", not "player_turn"`, 'warn');
-            this.showMessage(`Cannot hit: Game is in ${this.gameState?.state} state`, 'error');
             return;
         }
 
@@ -1432,13 +1429,11 @@ class BlackjackGame {
     async playerStand() {
         if (!this.gameId) {
             this.log('STAND DENIED: No gameId', 'warn');
-            this.showMessage('Cannot stand: No active game', 'error');
             return;
         }
         
         if (this.isProcessing) {
             this.log('STAND DENIED: Already processing another action', 'warn');
-            this.showMessage('Please wait, processing previous action...', 'warn');
             return;
         }
         
