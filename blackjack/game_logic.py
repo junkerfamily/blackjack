@@ -60,7 +60,7 @@ class BlackjackGame:
             return {'success': False, 'message': 'Bet must be greater than 0'}
         
         if self.player.chips < amount:
-            return {'success': False, 'message': 'Insufficient chips'}
+            return {'success': False, 'message': 'Insufficient Funds'}
         
         success = self.player.place_bet(amount)
         if success:
@@ -184,7 +184,7 @@ class BlackjackGame:
             return {'success': False, 'message': 'Cannot double down'}
         
         if self.player.chips < current_hand.bet:
-            return {'success': False, 'message': 'Insufficient chips to double down'}
+            return {'success': False, 'message': 'Insufficient Funds'}
         
         # Double the bet
         current_hand.double_down()
@@ -237,7 +237,7 @@ class BlackjackGame:
             return {'success': False, 'message': 'Cannot split this hand'}
         
         if self.player.chips < current_hand.bet:
-            return {'success': False, 'message': 'Insufficient chips to split'}
+            return {'success': False, 'message': 'Insufficient Funds'}
         
         success = self.player.split_hand(self.player.current_hand_index)
         if not success:

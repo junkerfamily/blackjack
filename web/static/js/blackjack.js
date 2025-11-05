@@ -1193,7 +1193,7 @@ class BlackjackGame {
                 const betPlaced = await this.placeBet(this.currentBet);
                 if (!betPlaced) {
                     this.log('Bet placement failed', 'error');
-                    this.showMessage('Bet placement failed', 'error');
+                    // Error message already shown by placeBet() method
                     return;
                 }
                 this.log(`Bet placed successfully: $${this.currentBet}`, 'success');
@@ -1837,7 +1837,8 @@ class BlackjackGame {
         // Enable/disable double down
         const doubleBtn = document.getElementById('double-btn');
         if (doubleBtn && playerHand) {
-            doubleBtn.disabled = !playerHand.can_double || this.gameState.state !== 'player_turn';
+            const canDouble = playerHand.can_double_down && this.gameState.state === 'player_turn';
+            doubleBtn.disabled = !canDouble;
         }
         
         // Enable/disable split
