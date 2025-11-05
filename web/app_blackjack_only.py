@@ -7,7 +7,7 @@ This file contains only the blackjack-related routes and blueprint registration.
 import os
 import sys
 import socket
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify
 
 # Get the directory where this script is located
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -43,6 +43,14 @@ def blackjack():
 def cards_test():
     """Test page for blackjack card rendering"""
     return render_template('cards_test.html')
+
+@app.route('/health')
+def health():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'ok',
+        'message': 'Server is running'
+    })
 
 def find_free_port(start_port=5000, max_attempts=10):
     """Find a free port starting from start_port"""

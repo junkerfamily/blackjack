@@ -14,6 +14,50 @@ class BlackjackGame {
         this.isProcessing = false;
         this.previousBalance = 1000; // Track balance for logging changes
         this.gameHistory = []; // Track game history for the panel
+        this.hecklerElement = null;
+        this.hecklerTimeout = null;
+        this.hecklerRemoveTimeout = null;
+        this.hecklerVoice = null;
+        this.currentHecklerUtterance = null;
+        this.hecklerVoicesListener = null;
+        this.hecklerSpeechRate = 1.05;
+        this.activeHecklerToken = null;
+        this.settingsToggle = null;
+        this.settingsPanel = null;
+        this.settingsCloseBtn = null;
+        this.hecklerVoiceSelect = null;
+        this.hecklerSpeedRange = null;
+        this.hecklerSpeedDisplay = null;
+        this.hecklerSettingsNote = null;
+        this.boundOutsideClickHandler = null;
+        this.boundEscapeHandler = null;
+        this.hecklerSettingsKey = 'blackjack_heckler_settings';
+        this.hecklerPreferences = this.loadHecklerPreferences();
+        this.pendingPreferredVoiceId = this.hecklerPreferences?.voiceId || null;
+        if (this.hecklerPreferences?.rate && !Number.isNaN(parseFloat(this.hecklerPreferences.rate))) {
+            this.hecklerSpeechRate = parseFloat(this.hecklerPreferences.rate);
+        }
+        this.hecklerPhrases = {
+            hard17: [
+                'You hit on a hard {total}? Did you lose a bet to common sense?',
+                'Hard {total} and you still begged for more pain?',
+                'A hard {total} hit? The dealer just sent you a thank-you card.'
+            ],
+            dealerBustCard: [
+                'Dealer shows a {dealerCard} and you still swing? Bold move, champ.',
+                'That {dealerCard} was begging you to stand. You tipped the house instead.',
+                'Every pit boss nodded when you hit against a {dealerCard}. Not in approval.'
+            ],
+            softHigh: [
+                'Soft {total} was already pretty. Why the makeover?',
+                'You had a soft {total} and still hit? Even the cocktail waitress winced.',
+                'Soft {total} and you asked for more? That cloud above you is pure judgement.'
+            ]
+        };
+        this.useSpeechSynthesis = typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
+        if (this.useSpeechSynthesis) {
+            this.setupHecklerVoices();
+        }
         // Don't call init() here - it's async and will be called separately
     }
 
@@ -55,6 +99,625 @@ class BlackjackGame {
     }
 
     /**
+     * Pick a random heckler line for a given category
+     */
+    pickRandomMessage(category) {
+        const messages = this.hecklerPhrases?.[category];
+        if (!messages || !messages.length) {
+            return null;
+        }
+        const index = Math.floor(Math.random() * messages.length);
+        return messages[index];
+    }
+
+    /**
+     * Replace template placeholders in heckler lines
+     */
+    formatHecklerMessage(template, context = {}) {
+        if (!template) return null;
+        return template.replace(/\{(\w+)\}/g, (_, key) => {
+            return Object.prototype.hasOwnProperty.call(context, key) ? context[key] : '';
+        });
+    }
+
+    /**
+     * Load speech preferences from localStorage
+     */
+    loadHecklerPreferences() {
+        if (typeof window === 'undefined' || !window.localStorage) return null;
+        try {
+            const stored = window.localStorage.getItem(this.hecklerSettingsKey);
+            if (!stored) return null;
+            const parsed = JSON.parse(stored);
+            return {
+                voiceId: parsed?.voiceId || null,
+                rate: parsed?.rate || null
+            };
+        } catch (error) {
+            console.warn('Failed to load heckler preferences:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Persist speech preferences
+     */
+    saveHecklerPreferences() {
+        if (typeof window === 'undefined' || !window.localStorage) return;
+        try {
+            const payload = {
+                voiceId: this.pendingPreferredVoiceId || null,
+                rate: this.hecklerSpeechRate
+            };
+            window.localStorage.setItem(this.hecklerSettingsKey, JSON.stringify(payload));
+        } catch (error) {
+            console.warn('Failed to save heckler preferences:', error);
+        }
+    }
+
+    /**
+     * Generate a stable identifier for a voice
+     */
+    getVoiceIdentifier(voice) {
+        if (!voice) return null;
+        return voice.voiceURI || `${voice.name}|${voice.lang}`;
+    }
+
+    /**
+     * Populate dropdown with available voices
+     */
+    populateVoiceOptions(voices) {
+        if (!this.hecklerVoiceSelect) return;
+        if (!Array.isArray(voices)) {
+            this.hecklerVoiceSelect.innerHTML = '';
+            this.hecklerVoiceSelect.disabled = true;
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'No voices available';
+            this.hecklerVoiceSelect.appendChild(option);
+            return;
+        }
+
+        const filteredVoices = voices.filter((voice) => {
+            const lang = voice.lang || '';
+            return typeof lang === 'string' && lang.toLowerCase().startsWith('en-us');
+        });
+
+        this.hecklerVoiceSelect.innerHTML = '';
+        if (filteredVoices.length === 0) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'No US English voices';
+            this.hecklerVoiceSelect.appendChild(option);
+            this.hecklerVoiceSelect.disabled = true;
+            this.hecklerVoice = null;
+            this.pendingPreferredVoiceId = null;
+            return;
+        }
+
+        const optionsFragment = document.createDocumentFragment();
+        filteredVoices.forEach((voice) => {
+            const option = document.createElement('option');
+            const identifier = this.getVoiceIdentifier(voice);
+            option.value = identifier;
+            let label = `${voice.name}`;
+            if (voice.lang) {
+                label += ` (${voice.lang})`;
+            }
+            if (voice.default) {
+                label += ' • default';
+            }
+            option.textContent = label;
+            if (this.hecklerVoice && identifier === this.getVoiceIdentifier(this.hecklerVoice)) {
+                option.selected = true;
+            } else if (!this.hecklerVoice && this.pendingPreferredVoiceId && identifier === this.pendingPreferredVoiceId) {
+                option.selected = true;
+            }
+            optionsFragment.appendChild(option);
+        });
+
+        this.hecklerVoiceSelect.appendChild(optionsFragment);
+        this.hecklerVoiceSelect.disabled = false;
+
+        const selectedOption = this.hecklerVoiceSelect.options[this.hecklerVoiceSelect.selectedIndex];
+        if (selectedOption) {
+            const selectedVoice = filteredVoices.find((voice) => this.getVoiceIdentifier(voice) === selectedOption.value);
+            if (selectedVoice) {
+                this.hecklerVoice = selectedVoice;
+                this.pendingPreferredVoiceId = selectedOption.value;
+                this.saveHecklerPreferences();
+            }
+        }
+    }
+
+    /**
+     * Refresh voice list in the settings panel
+     */
+    refreshVoiceOptions() {
+        if (!this.useSpeechSynthesis || typeof window === 'undefined' || !window.speechSynthesis) {
+            return;
+        }
+        const voices = window.speechSynthesis.getVoices();
+        if (voices && voices.length) {
+            this.populateVoiceOptions(voices);
+        }
+    }
+
+    /**
+     * Initialize settings panel interactions
+     */
+    initSettingsPanel() {
+        try {
+            this.settingsToggle = document.getElementById('settings-toggle');
+            this.settingsPanel = document.getElementById('settings-panel');
+            this.settingsCloseBtn = document.getElementById('settings-close');
+            this.hecklerVoiceSelect = document.getElementById('heckler-voice-select');
+            this.hecklerSpeedRange = document.getElementById('heckler-speed-range');
+            this.hecklerSpeedDisplay = document.getElementById('heckler-speed-display');
+            this.hecklerSettingsNote = document.getElementById('heckler-settings-note');
+
+            // Only proceed if the essential elements exist
+            if (!this.settingsToggle || !this.settingsPanel) {
+                console.warn('Settings panel elements not found in DOM');
+                return;
+            }
+
+            if (this.hecklerSpeedRange) {
+                const clampedRate = Math.min(
+                    parseFloat(this.hecklerSpeedRange.max || '1.6'),
+                    Math.max(parseFloat(this.hecklerSpeedRange.min || '0.6'), this.hecklerSpeechRate)
+                );
+                this.hecklerSpeechRate = clampedRate;
+                this.hecklerSpeedRange.value = clampedRate;
+                this.updateSpeedDisplay(clampedRate);
+                this.hecklerSpeedRange.addEventListener('input', (event) => {
+                    const rate = parseFloat(event.target.value);
+                    if (!Number.isNaN(rate)) {
+                        this.hecklerSpeechRate = rate;
+                        this.updateSpeedDisplay(rate);
+                        this.saveHecklerPreferences();
+                    }
+                });
+            }
+
+            const updateVoiceSelection = () => {
+                if (!this.hecklerVoiceSelect) return;
+                this.hecklerVoiceSelect.addEventListener('change', (event) => {
+                    const selectedId = event.target.value;
+                    this.pendingPreferredVoiceId = selectedId || null;
+                    if (!this.useSpeechSynthesis || typeof window === 'undefined' || !window.speechSynthesis) {
+                        return;
+                    }
+                    const voices = window.speechSynthesis.getVoices();
+                    if (!voices || !voices.length) {
+                        return;
+                    }
+                    const chosenVoice = voices.find((voice) => this.getVoiceIdentifier(voice) === selectedId);
+                    if (chosenVoice) {
+                        this.hecklerVoice = chosenVoice;
+                        this.saveHecklerPreferences();
+                    }
+                });
+            };
+
+            this.settingsToggle.setAttribute('aria-expanded', 'false');
+            this.settingsToggle.addEventListener('click', () => {
+                this.toggleSettingsPanel(!this.settingsPanel.classList.contains('open'));
+            });
+
+            if (this.settingsCloseBtn) {
+                this.settingsCloseBtn.addEventListener('click', () => this.toggleSettingsPanel(false));
+            }
+
+            if (this.useSpeechSynthesis) {
+                updateVoiceSelection();
+                this.refreshVoiceOptions();
+                if (this.hecklerSettingsNote) {
+                    this.hecklerSettingsNote.hidden = true;
+                }
+            } else {
+                if (this.hecklerVoiceSelect) {
+                    this.hecklerVoiceSelect.innerHTML = '';
+                    const option = document.createElement('option');
+                    option.value = '';
+                    option.textContent = 'Speech not supported';
+                    this.hecklerVoiceSelect.appendChild(option);
+                    this.hecklerVoiceSelect.disabled = true;
+                }
+                if (this.hecklerSpeedRange) {
+                    this.hecklerSpeedRange.disabled = true;
+                }
+                if (this.hecklerSettingsNote) {
+                    this.hecklerSettingsNote.hidden = false;
+                }
+            }
+        } catch (error) {
+            console.error('Error initializing settings panel:', error);
+            // Don't throw - allow the game to continue even if settings panel fails
+        }
+    }
+
+    /**
+     * Update the displayed speech rate
+     */
+    updateSpeedDisplay(rate) {
+        if (!this.hecklerSpeedDisplay) return;
+        const rounded = Math.round(rate * 100) / 100;
+        this.hecklerSpeedDisplay.textContent = `${rounded.toFixed(2)}×`;
+    }
+
+    /**
+     * Toggle settings panel visibility
+     */
+    toggleSettingsPanel(forceOpen = null) {
+        if (!this.settingsPanel || !this.settingsToggle) return;
+        const shouldOpen = forceOpen !== null ? forceOpen : !this.settingsPanel.classList.contains('open');
+        if (shouldOpen) {
+            this.settingsPanel.classList.add('open');
+            this.settingsPanel.setAttribute('aria-hidden', 'false');
+            this.settingsToggle.setAttribute('aria-expanded', 'true');
+            if (!this.boundOutsideClickHandler) {
+                this.boundOutsideClickHandler = (event) => this.handleOutsideClick(event);
+                document.addEventListener('mousedown', this.boundOutsideClickHandler);
+            }
+            if (!this.boundEscapeHandler) {
+                this.boundEscapeHandler = (event) => this.handleEscapeKey(event);
+                document.addEventListener('keydown', this.boundEscapeHandler);
+            }
+        } else {
+            this.settingsPanel.classList.remove('open');
+            this.settingsPanel.setAttribute('aria-hidden', 'true');
+            this.settingsToggle.setAttribute('aria-expanded', 'false');
+            if (this.boundOutsideClickHandler) {
+                document.removeEventListener('mousedown', this.boundOutsideClickHandler);
+                this.boundOutsideClickHandler = null;
+            }
+            if (this.boundEscapeHandler) {
+                document.removeEventListener('keydown', this.boundEscapeHandler);
+                this.boundEscapeHandler = null;
+            }
+        }
+    }
+
+    handleOutsideClick(event) {
+        if (!this.settingsPanel || !this.settingsToggle) return;
+        if (this.settingsPanel.contains(event.target) || this.settingsToggle.contains(event.target)) {
+            return;
+        }
+        this.toggleSettingsPanel(false);
+    }
+
+    handleEscapeKey(event) {
+        if (event.key === 'Escape') {
+            this.toggleSettingsPanel(false);
+        }
+    }
+
+    /**
+     * Setup speech synthesis voice selection for the heckler
+     */
+    setupHecklerVoices() {
+        try {
+            const synth = window.speechSynthesis;
+            if (!synth) {
+                this.useSpeechSynthesis = false;
+                return;
+            }
+
+            const assignVoice = () => {
+                const voices = synth.getVoices();
+                if (!voices || !voices.length) {
+                    return;
+                }
+
+                const usVoices = voices.filter((voice) => {
+                    const lang = voice.lang || '';
+                    return typeof lang === 'string' && lang.toLowerCase().startsWith('en-us');
+                });
+
+                let selectedVoice = null;
+                if (this.pendingPreferredVoiceId) {
+                    selectedVoice = usVoices.find((voice) => this.getVoiceIdentifier(voice) === this.pendingPreferredVoiceId) || null;
+                }
+
+                if (!selectedVoice && usVoices.length > 0) {
+                    selectedVoice = usVoices[0];
+                    this.pendingPreferredVoiceId = this.getVoiceIdentifier(selectedVoice);
+                }
+
+                this.hecklerVoice = selectedVoice || null;
+                this.populateVoiceOptions(voices);
+                this.saveHecklerPreferences();
+            };
+
+            assignVoice();
+            synth.addEventListener('voiceschanged', assignVoice);
+            this.hecklerVoicesListener = assignVoice;
+        } catch (error) {
+            console.error('Heckler voice setup failed:', error);
+            this.useSpeechSynthesis = false;
+            this.hecklerVoice = null;
+        }
+    }
+
+    /**
+     * Speak the heckler commentary using Web Speech API
+     */
+    speakHecklerLine(message, token) {
+        if (!this.useSpeechSynthesis || !message || typeof window === 'undefined') return false;
+        const synth = window.speechSynthesis;
+        if (!synth) return false;
+
+        try {
+            this.stopHecklerSpeech();
+            const utterance = new SpeechSynthesisUtterance(message);
+            if (this.hecklerVoice) {
+                utterance.voice = this.hecklerVoice;
+            } else {
+                const voices = synth.getVoices();
+                const usVoice = voices.find((voice) => {
+                    const lang = voice.lang || '';
+                    return typeof lang === 'string' && lang.toLowerCase().startsWith('en-us');
+                });
+                if (usVoice) {
+                    utterance.voice = usVoice;
+                    this.hecklerVoice = usVoice;
+                    this.pendingPreferredVoiceId = this.getVoiceIdentifier(usVoice);
+                    this.saveHecklerPreferences();
+                    this.refreshVoiceOptions();
+                }
+            }
+            utterance.rate = this.hecklerSpeechRate;
+            utterance.pitch = 1;
+            utterance.volume = 0.9;
+            utterance.onend = () => {
+                this.currentHecklerUtterance = null;
+                if (token && token === this.activeHecklerToken) {
+                    this.hideHecklerMessage(token);
+                }
+            };
+            utterance.onerror = () => {
+                this.currentHecklerUtterance = null;
+                if (token && token === this.activeHecklerToken) {
+                    this.hideHecklerMessage(token);
+                }
+            };
+            this.currentHecklerUtterance = utterance;
+            synth.speak(utterance);
+            return true;
+        } catch (error) {
+            console.error('Heckler speech failed:', error);
+            this.useSpeechSynthesis = false;
+            this.currentHecklerUtterance = null;
+            return false;
+        }
+        return false;
+    }
+
+    /**
+     * Stop any ongoing heckler speech
+     */
+    stopHecklerSpeech() {
+        if (!this.useSpeechSynthesis || typeof window === 'undefined') return;
+        const synth = window.speechSynthesis;
+        if (!synth) return;
+        try {
+            if (synth.speaking || synth.pending) {
+                synth.cancel();
+            }
+        } catch (error) {
+            console.error('Failed to cancel heckler speech:', error);
+        } finally {
+            this.currentHecklerUtterance = null;
+        }
+    }
+
+    /**
+     * Determine the dealer's visible up card
+     */
+    getDealerUpCard() {
+        const dealer = this.gameState?.dealer;
+        if (!dealer) return null;
+        const fullHand = Array.isArray(dealer.full_hand) ? dealer.full_hand : [];
+        if (!fullHand.length) return null;
+        if (dealer.hole_card_hidden) {
+            return fullHand[1] || null;
+        }
+        return fullHand[0] || null;
+    }
+
+    /**
+     * Convert a card dictionary to its numeric value for strategy heuristics
+     */
+    getCardNumericValue(card) {
+        if (!card || !card.rank) return null;
+        const rank = card.rank;
+        if (rank === 'A') return 11;
+        if (['K', 'Q', 'J', '10'].includes(rank)) return 10;
+        const parsed = parseInt(rank, 10);
+        return Number.isNaN(parsed) ? null : parsed;
+    }
+
+    /**
+     * Friendly label for a card rank
+     */
+    formatCardLabel(card) {
+        if (!card || !card.rank) return '';
+        const rank = card.rank;
+        switch (rank) {
+            case 'A':
+                return 'Ace';
+            case 'K':
+                return 'King';
+            case 'Q':
+                return 'Queen';
+            case 'J':
+                return 'Jack';
+            default:
+                return rank;
+        }
+    }
+
+    /**
+     * Determine if a hand is soft (contains an Ace counted as 11)
+     */
+    isSoftHand(hand) {
+        const cards = hand?.cards;
+        if (!Array.isArray(cards) || !cards.length) {
+            return false;
+        }
+        let total = 0;
+        let aces = 0;
+        cards.forEach(card => {
+            if (!card || !card.rank) return;
+            if (card.rank === 'A') {
+                total += 11;
+                aces += 1;
+            } else if (['K', 'Q', 'J', '10'].includes(card.rank)) {
+                total += 10;
+            } else {
+                const parsed = parseInt(card.rank, 10);
+                total += Number.isNaN(parsed) ? 0 : parsed;
+            }
+        });
+        let acesAsEleven = aces;
+        while (total > 21 && acesAsEleven > 0) {
+            total -= 10;
+            acesAsEleven -= 1;
+        }
+        return acesAsEleven > 0;
+    }
+
+    /**
+     * Evaluate whether a hit decision deserves heckling
+     */
+    evaluateHitDecision(hand, dealerCard) {
+        if (!hand || !dealerCard) {
+            return { shouldHeckle: false, message: null };
+        }
+        const total = hand.value ?? 0;
+        const isSoft = this.isSoftHand(hand);
+        const dealerValue = this.getCardNumericValue(dealerCard);
+        const dealerLabel = this.formatCardLabel(dealerCard);
+
+        if (!isSoft && total >= 17) {
+            const template = this.pickRandomMessage('hard17');
+            return {
+                shouldHeckle: !!template,
+                message: this.formatHecklerMessage(template, { total })
+            };
+        }
+
+        const dealerShowingBustCard = dealerValue !== null && dealerValue >= 2 && dealerValue <= 6;
+        if (!isSoft && dealerShowingBustCard && total >= 13 && total <= 16) {
+            const template = this.pickRandomMessage('dealerBustCard');
+            return {
+                shouldHeckle: !!template,
+                message: this.formatHecklerMessage(template, { total, dealerCard: dealerLabel })
+            };
+        }
+
+        if (!isSoft && dealerShowingBustCard && total === 12) {
+            const template = this.pickRandomMessage('dealerBustCard');
+            return {
+                shouldHeckle: !!template,
+                message: this.formatHecklerMessage(template, { total, dealerCard: dealerLabel })
+            };
+        }
+
+        if (isSoft && total >= 19) {
+            const template = this.pickRandomMessage('softHigh');
+            return {
+                shouldHeckle: !!template,
+                message: this.formatHecklerMessage(template, { total })
+            };
+        }
+
+        return { shouldHeckle: false, message: null };
+    }
+
+    /**
+     * Show the heckler popover with disdainful commentary
+     */
+    showHecklerMessage(message) {
+        if (!message) return;
+        const container = document.querySelector('.player-area');
+        if (!container) return;
+
+        const token = Symbol('heckle');
+        this.activeHecklerToken = token;
+
+        this.stopHecklerSpeech();
+
+        if (this.hecklerTimeout) {
+            clearTimeout(this.hecklerTimeout);
+            this.hecklerTimeout = null;
+        }
+        if (this.hecklerRemoveTimeout) {
+            clearTimeout(this.hecklerRemoveTimeout);
+            this.hecklerRemoveTimeout = null;
+        }
+
+        if (!this.hecklerElement) {
+            this.hecklerElement = document.createElement('div');
+            this.hecklerElement.className = 'heckler-popover';
+            this.hecklerElement.textContent = message;
+            container.appendChild(this.hecklerElement);
+            const animateIn = () => {
+                if (this.hecklerElement) {
+                    this.hecklerElement.classList.add('visible');
+                }
+            };
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(animateIn);
+            } else {
+                setTimeout(animateIn, 16);
+            }
+        } else {
+            this.hecklerElement.textContent = message;
+            this.hecklerElement.classList.remove('fade-out');
+            this.hecklerElement.classList.add('visible');
+        }
+
+        const spoke = this.speakHecklerLine(message, token);
+        if (!spoke) {
+            this.hecklerTimeout = setTimeout(() => {
+                if (this.activeHecklerToken === token) {
+                    this.hideHecklerMessage(token);
+                }
+            }, 5000);
+        }
+    }
+
+    /**
+     * Hide and remove the heckler popover
+     */
+    hideHecklerMessage(token = null) {
+        if (token && token !== this.activeHecklerToken) {
+            return;
+        }
+        if (!this.hecklerElement) {
+            if (!token || token === this.activeHecklerToken) {
+                this.activeHecklerToken = null;
+            }
+            return;
+        }
+        this.hecklerElement.classList.add('fade-out');
+        this.hecklerTimeout = null;
+        this.stopHecklerSpeech();
+        this.hecklerRemoveTimeout = setTimeout(() => {
+            if (this.hecklerElement && this.hecklerElement.parentElement) {
+                this.hecklerElement.parentElement.removeChild(this.hecklerElement);
+            }
+            this.hecklerElement = null;
+            this.hecklerRemoveTimeout = null;
+            if (!token || token === this.activeHecklerToken) {
+                this.activeHecklerToken = null;
+            }
+        }, 300);
+    }
+
+    /**
      * Initialize the game
      */
     async init() {
@@ -64,6 +727,7 @@ class BlackjackGame {
         
         // Setup chip selection
         this.setupChipSelection();
+        this.initSettingsPanel();
         
         // Enable chip buttons initially
         document.querySelectorAll('.chip').forEach(chip => {
@@ -181,7 +845,7 @@ class BlackjackGame {
     }
 
     /**
-     * Make API call
+     * Make API call with proper error handling
      */
     async apiCall(endpoint, method = 'POST', data = {}) {
         try {
@@ -196,16 +860,31 @@ class BlackjackGame {
                 options.body = JSON.stringify(data);
             }
 
-            const response = await fetch(endpoint, options);
+            let response;
+            try {
+                response = await fetch(endpoint, options);
+            } catch (fetchError) {
+                // Network error - this includes broken pipe errors
+                console.error('Network error during fetch:', fetchError.message);
+                throw new Error(`Connection failed: ${fetchError.message || 'Server unreachable'}`);
+            }
             
             // Check if response is JSON
             const contentType = response.headers.get('content-type');
             if (!contentType || !contentType.includes('application/json')) {
                 const text = await response.text();
-                throw new Error(`Server returned non-JSON response: ${text.substring(0, 100)}`);
+                const preview = text.substring(0, 100);
+                console.error('Non-JSON response received:', { status: response.status, text: preview });
+                throw new Error(`Server error (${response.status}): Invalid response format`);
             }
             
-            const result = await response.json();
+            let result;
+            try {
+                result = await response.json();
+            } catch (jsonError) {
+                console.error('Failed to parse JSON response:', jsonError);
+                throw new Error('Server returned invalid JSON');
+            }
             
             if (!response.ok) {
                 const errorMsg = result.error || result.message || `HTTP ${response.status}: ${response.statusText}`;
@@ -498,10 +1177,14 @@ class BlackjackGame {
             } else {
                 this.log(`Deal failed: ${result.error || result.message}`, 'error');
                 this.showMessage(result.error || result.message || 'Deal failed', 'error');
+                this.hideGameControls();
+                this.showBettingArea();
             }
         } catch (error) {
             this.log(`Deal error: ${error.message}`, 'error');
             this.showMessage(`Error: ${error.message}`, 'error');
+            this.hideGameControls();
+            this.showBettingArea();
         } finally {
             this.hideLoading();
         }
@@ -528,9 +1211,20 @@ class BlackjackGame {
             this.showMessage(`Cannot hit: Game is in ${this.gameState?.state} state`, 'error');
             return;
         }
-        
-        const currentValue = this.gameState?.player?.hands?.[this.gameState.player.current_hand_index]?.value || 0;
+
+        const handsBeforeHit = this.gameState?.player?.hands || [];
+        const requestedIndexBeforeHit = this.gameState?.player?.current_hand_index || 0;
+        const safeIndexBeforeHit = (requestedIndexBeforeHit < handsBeforeHit.length) ? requestedIndexBeforeHit : Math.max(0, handsBeforeHit.length - 1);
+        const currentHandBeforeHit = handsBeforeHit[safeIndexBeforeHit] || null;
+        const currentValue = currentHandBeforeHit?.value || 0;
         this.log(`Player attempting HIT (current value: ${currentValue})`, 'hit');
+        
+        const dealerUpCard = this.getDealerUpCard();
+        const heckleAssessment = this.evaluateHitDecision(currentHandBeforeHit, dealerUpCard);
+        if (heckleAssessment.shouldHeckle && heckleAssessment.message) {
+            this.log(`Heckler triggered: ${heckleAssessment.message}`, 'warn');
+            this.showHecklerMessage(heckleAssessment.message);
+        }
         
         try {
             this.showLoading();
@@ -1185,7 +1879,18 @@ class BlackjackGame {
         const bettingArea = document.getElementById('betting-area');
         if (bettingArea) {
             bettingArea.style.display = 'block';
+            bettingArea.classList.remove('action-mode');
             this.log('Betting area shown and enabled', 'action');
+        }
+        
+        const bettingLabel = document.getElementById('betting-label');
+        if (bettingLabel) {
+            bettingLabel.textContent = 'Place Your Bet';
+        }
+        
+        const gameControls = document.getElementById('game-controls');
+        if (gameControls) {
+            gameControls.style.display = 'none';
         }
         
         const dealBtn = document.getElementById('deal-btn');
@@ -1212,7 +1917,18 @@ class BlackjackGame {
         const bettingArea = document.getElementById('betting-area');
         if (bettingArea) {
             bettingArea.style.display = 'block';
+            bettingArea.classList.remove('action-mode');
             this.log('Betting area shown but DISABLED (game ended)', 'action');
+        }
+        
+        const bettingLabel = document.getElementById('betting-label');
+        if (bettingLabel) {
+            bettingLabel.textContent = 'Betting Locked';
+        }
+        
+        const gameControls = document.getElementById('game-controls');
+        if (gameControls) {
+            gameControls.style.display = 'none';
         }
         
         // Disable Deal Cards button
@@ -1239,8 +1955,9 @@ class BlackjackGame {
     hideBettingArea() {
         const bettingArea = document.getElementById('betting-area');
         if (bettingArea) {
-            bettingArea.style.display = 'none';
-            this.log('Betting area hidden and disabled', 'action');
+            bettingArea.style.display = 'block';
+            bettingArea.classList.add('action-mode');
+            this.log('Betting area switched to action mode', 'action');
         }
         
         // Disable chip buttons when betting area is hidden
@@ -1252,6 +1969,16 @@ class BlackjackGame {
         const dealBtn = document.getElementById('deal-btn');
         if (dealBtn) {
             dealBtn.disabled = true;
+        }
+        
+        const bettingLabel = document.getElementById('betting-label');
+        if (bettingLabel) {
+            bettingLabel.textContent = 'Choose Your Action';
+        }
+        
+        const gameControls = document.getElementById('game-controls');
+        if (gameControls) {
+            gameControls.style.display = 'flex';
         }
         
         // Disable Clear Bet button
@@ -1266,6 +1993,21 @@ class BlackjackGame {
      */
     showGameControls() {
         const controlsElement = document.getElementById('game-controls');
+        const bettingArea = document.getElementById('betting-area');
+        if (bettingArea) {
+            bettingArea.classList.add('action-mode');
+        }
+        const bettingLabel = document.getElementById('betting-label');
+        if (bettingLabel) {
+            bettingLabel.textContent = 'Choose Your Action';
+        }
+        const dealBtn = document.getElementById('deal-btn');
+        if (dealBtn) {
+            dealBtn.disabled = true;
+        }
+        document.querySelectorAll('.chip').forEach(chip => {
+            chip.disabled = true;
+        });
         if (controlsElement) {
             controlsElement.style.display = 'flex';
             this.log('Game controls shown (Hit, Stand, Double Down)', 'action');
@@ -1451,4 +2193,3 @@ function refreshBankroll() {
         game.refreshBankroll();
     }
 }
-
