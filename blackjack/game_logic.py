@@ -89,12 +89,13 @@ class BlackjackGame:
         player_cards = self.deck.deal_cards(2)
         current_hand.add_cards(player_cards)
         
-        # Deal two cards to dealer
+        # Deal two cards to dealer (hole card stays hidden)
         dealer_cards = self.deck.deal_cards(2)
         self.dealer.add_cards(dealer_cards)
         
-        # Check for immediate blackjack
+        # Check for player blackjack (player wins immediately only if dealer doesn't have blackjack)
         if self.player.get_current_hand().is_blackjack():
+            # Player has blackjack - reveal dealer's hole card to check if dealer also has it
             self.dealer.reveal_hole_card()
             if self.dealer.is_blackjack():
                 # Both have blackjack - push
@@ -106,14 +107,8 @@ class BlackjackGame:
                 self.state = GameState.GAME_OVER
                 self.result = "blackjack"
                 self.player.win(is_blackjack=True)
-        elif self.dealer.is_blackjack():
-            # Dealer blackjack - dealer wins immediately
-            self.dealer.reveal_hole_card()
-            self.state = GameState.GAME_OVER
-            self.result = "loss"
-            self.player.lose()
         else:
-            # Normal play continues
+            # Normal play continues - dealer's hole card remains hidden
             self.state = GameState.PLAYER_TURN
         
         return {'success': True, 'message': 'Cards dealt'}
