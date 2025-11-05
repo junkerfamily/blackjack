@@ -728,6 +728,7 @@ class BlackjackGame {
         // Setup chip selection
         this.setupChipSelection();
         this.initSettingsPanel();
+        this.setupKeyboardHotkeys();
         
         // Enable chip buttons initially
         document.querySelectorAll('.chip').forEach(chip => {
@@ -741,6 +742,61 @@ class BlackjackGame {
             console.error('Failed to initialize game:', error);
             this.showMessage('Game initialization failed. Please refresh the page.', 'error');
         }
+    }
+
+    /**
+     * Setup keyboard hotkeys for quick game actions
+     */
+    setupKeyboardHotkeys() {
+        // Log hotkeys to console for user reference
+        console.log('%c⌨️ KEYBOARD HOTKEYS AVAILABLE', 'color: #FFD700; font-size: 14px; font-weight: bold');
+        console.log('%cN%c = New Game', 'color: #FFD700; font-weight: bold', 'color: #fff');
+        console.log('%cH%c = Hit', 'color: #FFD700; font-weight: bold', 'color: #fff');
+        console.log('%cS%c = Stand', 'color: #FFD700; font-weight: bold', 'color: #fff');
+        console.log('%cD%c = Deal Cards', 'color: #FFD700; font-weight: bold', 'color: #fff');
+        console.log('%c1%c = Bet $100', 'color: #FFD700; font-weight: bold', 'color: #fff');
+        console.log('%c5%c = Bet $500', 'color: #FFD700; font-weight: bold', 'color: #fff');
+
+        document.addEventListener('keydown', (event) => {
+            // Don't trigger hotkeys if user is typing in an input field
+            if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            const key = event.key.toLowerCase();
+
+            switch(key) {
+                case 'n':
+                    this.log('⌨️ Hotkey: New Game (N)', 'action');
+                    this.newGame();
+                    break;
+                case 'h':
+                    this.log('⌨️ Hotkey: Hit (H)', 'action');
+                    this.playerHit();
+                    break;
+                case 's':
+                    this.log('⌨️ Hotkey: Stand (S)', 'action');
+                    this.playerStand();
+                    break;
+                case 'd':
+                    this.log('⌨️ Hotkey: Deal Cards (D)', 'action');
+                    this.dealCards();
+                    break;
+                case '1':
+                    this.log('⌨️ Hotkey: $100 Bet (1)', 'action');
+                    this.selectChip(100);
+                    this.addToBet(100);
+                    break;
+                case '5':
+                    this.log('⌨️ Hotkey: $500 Bet (5)', 'action');
+                    this.selectChip(500);
+                    this.addToBet(500);
+                    break;
+                default:
+                    // Ignore other keys
+                    break;
+            }
+        });
     }
 
     /**
