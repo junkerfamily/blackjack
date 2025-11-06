@@ -16,6 +16,8 @@ class BlackjackGame {
         this.gameHistory = []; // Track game history for the panel
         this.defaultBetAmount = null; // Default bet amount for quick play
         this.defaultBetStorageKey = 'blackjack_default_bet';
+        this.actionStatusElement = null; // Status message element
+        this.actionStatusTimeout = null; // Timeout for clearing status
         this.hecklerElement = null;
         this.hecklerTimeout = null;
         this.hecklerRemoveTimeout = null;
@@ -727,6 +729,9 @@ class BlackjackGame {
         this.playerHandManager = new CardManager('#player-hand');
         this.dealerHandManager = new CardManager('#dealer-hand');
         
+        // Setup status element
+        this.actionStatusElement = document.getElementById('action-status');
+        
         // Setup chip selection
         this.setupChipSelection();
         this.initSettingsPanel();
@@ -744,6 +749,44 @@ class BlackjackGame {
             console.error('Failed to initialize game:', error);
             this.showMessage('Game initialization failed. Please refresh the page.', 'error');
         }
+    }
+
+    /**
+     * Show action status message
+     */
+    setActionStatus(message, duration = 3000) {
+        if (!this.actionStatusElement) return;
+        
+        // Clear existing timeout
+        if (this.actionStatusTimeout) {
+            clearTimeout(this.actionStatusTimeout);
+        }
+        
+        // Show message
+        this.actionStatusElement.textContent = message.toLowerCase();
+        this.actionStatusElement.classList.remove('inactive');
+        this.actionStatusElement.classList.add('active');
+        
+        // Auto-hide after duration
+        this.actionStatusTimeout = setTimeout(() => {
+            this.actionStatusElement.classList.remove('active');
+            this.actionStatusElement.classList.add('inactive');
+        }, duration);
+    }
+
+    /**
+     * Clear action status message
+     */
+    clearActionStatus() {
+        if (!this.actionStatusElement) return;
+        
+        if (this.actionStatusTimeout) {
+            clearTimeout(this.actionStatusTimeout);
+        }
+        
+        this.actionStatusElement.textContent = '';
+        this.actionStatusElement.classList.remove('active');
+        this.actionStatusElement.classList.add('inactive');
     }
 
     /**
@@ -1124,6 +1167,7 @@ class BlackjackGame {
      */
     async dealCards() {
         this.log('Starting dealCards process', 'deal');
+        this.setActionStatus('dealing cards');
         
         // Auto-place default bet if no bet and default bet is set
         if (this.currentBet <= 0 && this.defaultBetAmount) {
@@ -1293,6 +1337,7 @@ class BlackjackGame {
         const currentHandBeforeHit = handsBeforeHit[safeIndexBeforeHit] || null;
         const currentValue = currentHandBeforeHit?.value || 0;
         this.log(`Player attempting HIT (current value: ${currentValue})`, 'hit');
+        this.setActionStatus('taking hit');
         
         const dealerUpCard = this.getDealerUpCard();
         const heckleAssessment = this.evaluateHitDecision(currentHandBeforeHit, dealerUpCard);
@@ -1439,6 +1484,7 @@ class BlackjackGame {
         
         const playerValue = this.gameState?.player?.hands?.[this.gameState.player.current_hand_index]?.value || 0;
         this.log(`Player STANDS with value: ${playerValue}`, 'action');
+        this.setActionStatus('standing');
         
         try {
             this.showLoading();
@@ -1487,6 +1533,8 @@ class BlackjackGame {
     async playerDoubleDown() {
         if (!this.gameId || this.isProcessing) return;
         
+        this.setActionStatus('double down');
+        
         try {
             this.showLoading();
             const result = await this.apiCall('/api/double_down', 'POST', {
@@ -1513,6 +1561,8 @@ class BlackjackGame {
      */
     async playerSplit() {
         if (!this.gameId || this.isProcessing) return;
+        
+        this.setActionStatus('splitting hand');
         
         try {
             this.showLoading();

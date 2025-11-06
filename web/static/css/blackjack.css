@@ -680,6 +680,25 @@ button:disabled {
     flex: 1 1 140px;
 }
 
+/* Action Status Message */
+.action-status {
+    text-align: center;
+    font-size: 0.95em;
+    font-weight: bold;
+    color: #dc3545;
+    margin-top: 12px;
+    min-height: 1.4em;
+    transition: opacity 0.3s ease;
+}
+
+.action-status.active {
+    opacity: 1;
+}
+
+.action-status.inactive {
+    opacity: 0;
+}
+
 /* Loading Overlay */
 .loading-overlay {
     position: fixed;
