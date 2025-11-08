@@ -419,6 +419,7 @@ class BlackjackGame {
         const voices = window.speechSynthesis.getVoices();
         if (voices && voices.length) {
             this.populateVoiceOptions(voices);
+            this.assignPreferredVoice(voices);
         }
     }
 
