@@ -2226,15 +2226,44 @@ class BlackjackGame {
 
     updateAutoStatusUI() {
         const statusEl = document.getElementById('auto-status');
+        const statusTextEl = document.getElementById('auto-status-text');
+        const downloadBtn = document.getElementById('auto-download-log-btn');
+        
         if (!statusEl) return;
+        
         const autoMode = this.gameState?.auto_mode;
         if (autoMode?.status) {
             statusEl.style.display = 'block';
-            statusEl.textContent = autoMode.status;
+            if (statusTextEl) {
+                statusTextEl.textContent = autoMode.status;
+            }
+            
+            // Show download button if log file is available
+            if (downloadBtn && autoMode.log_filename) {
+                downloadBtn.style.display = 'inline-block';
+                downloadBtn.onclick = () => this.downloadAutoModeLog(autoMode.log_filename);
+            } else if (downloadBtn) {
+                downloadBtn.style.display = 'none';
+            }
         } else {
             statusEl.style.display = 'none';
-            statusEl.textContent = '';
+            if (statusTextEl) {
+                statusTextEl.textContent = '';
+            }
+            if (downloadBtn) {
+                downloadBtn.style.display = 'none';
+            }
         }
+    }
+
+    downloadAutoModeLog(logFilename) {
+        if (!this.gameState?.game_id || !logFilename) {
+            this.log('Cannot download log: missing game ID or filename', 'error');
+            return;
+        }
+        
+        const url = `/api/auto_mode/download_log?game_id=${encodeURIComponent(this.gameState.game_id)}&filename=${encodeURIComponent(logFilename)}`;
+        window.location.href = url;
     }
 
     /**

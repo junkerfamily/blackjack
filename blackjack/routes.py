@@ -3,7 +3,8 @@ Blackjack game API endpoints
 """
 
 import json
-from flask import Blueprint, request, jsonify
+import os
+from flask import Blueprint, request, jsonify, send_file
 from blackjack.game_logic import BlackjackGame, GameState
 
 # Store active games (in production, use Redis or database)
@@ -319,5 +320,53 @@ def auto_mode_stop():
             'game_state': game.get_game_state()
         }), status
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@blackjack_bp.route('/auto_mode/download_log', methods=['GET'])
+def download_auto_mode_log():
+    """Download the auto mode log file"""
+    try:
+        game_id = request.args.get('game_id')
+        log_filename = request.args.get('filename')
+
+        if not game_id:
+            return jsonify({'success': False, 'error': 'Game ID required'}), 400
+        if not log_filename:
+            return jsonify({'success': False, 'error': 'Log filename required'}), 400
+
+        game = get_game(game_id)
+        
+        # Verify the log filename belongs to this game
+        if game.auto_mode_log_filename != log_filename:
+            return jsonify({'success': False, 'error': 'Invalid log filename'}), 403
+
+        # Get the project root directory
+        current_file = os.path.abspath(__file__)
+        blackjack_dir = os.path.dirname(current_file)
+        project_root = os.path.dirname(blackjack_dir)
+        
+        # If project root doesn't exist, try current working directory
+        if not os.path.exists(project_root):
+            project_root = os.getcwd()
+        
+        # Construct log file path
+        log_dir = os.path.join(project_root, 'AutoMode')
+        log_path = os.path.join(log_dir, log_filename)
+        
+        # Verify file exists
+        if not os.path.exists(log_path):
+            return jsonify({'success': False, 'error': 'Log file not found'}), 404
+        
+        # Send file as download
+        return send_file(
+            log_path,
+            mimetype='text/plain',
+            as_attachment=True,
+            download_name=log_filename
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 

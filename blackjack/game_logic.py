@@ -47,6 +47,7 @@ class BlackjackGame:
         self.auto_insurance_mode: Optional[str] = None  # 'always' | 'never'
         self.auto_status: Optional[str] = None
         self.auto_mode_log_file: Optional[Any] = None  # File handle for auto mode logging
+        self.auto_mode_log_filename: Optional[str] = None  # Log filename for download
         
     def new_game(self, preserve_auto: bool = False):
         """Start a new game round"""
@@ -489,7 +490,8 @@ class BlackjackGame:
                 'hands_remaining': self.auto_hands_remaining,
                 'default_bet': self.auto_default_bet,
                 'insurance_mode': self.auto_insurance_mode,
-                'status': self.auto_status
+                'status': self.auto_status,
+                'log_filename': self.auto_mode_log_filename if not self.auto_mode_active and self.auto_mode_log_filename else None
             }
         }
 
@@ -564,6 +566,9 @@ class BlackjackGame:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             log_filename = f'{timestamp}.log'
             log_path = os.path.join(log_dir, log_filename)
+            
+            # Store filename for download
+            self.auto_mode_log_filename = log_filename
             
             # Open file for writing
             self.auto_mode_log_file = open(log_path, 'w', encoding='utf-8')
