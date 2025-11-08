@@ -16,6 +16,7 @@ class Hand:
         self.is_doubled_down: bool = False
         self.is_split: bool = False
         self.is_surrendered: bool = False
+        self.is_from_split_aces: bool = False
     
     def add_card(self, card: Card):
         """Add a card to the hand"""
@@ -38,8 +39,8 @@ class Hand:
         return is_bust(self.cards)
     
     def can_double_down(self) -> bool:
-        """Check if hand can be doubled down (exactly 2 cards, not doubled)"""
-        return len(self.cards) == 2 and not self.is_doubled_down
+        """Check if hand can be doubled down (exactly 2 cards, not doubled, not from split aces)"""
+        return len(self.cards) == 2 and not self.is_doubled_down and not self.is_from_split_aces
     
     def can_split(self) -> bool:
         """Check if hand can be split"""
@@ -59,6 +60,7 @@ class Hand:
         self.is_doubled_down = False
         self.is_split = False
         self.is_surrendered = False
+        self.is_from_split_aces = False
     
     def to_dict(self) -> dict:
         """Convert hand to dictionary for JSON serialization"""
@@ -70,6 +72,7 @@ class Hand:
             'is_bust': self.is_bust(),
             'is_doubled_down': self.is_doubled_down,
             'is_split': self.is_split,
+            'is_from_split_aces': self.is_from_split_aces,
             'can_double_down': self.can_double_down(),
             'can_split': self.can_split()
         }
@@ -153,6 +156,9 @@ class Player:
         new_hand.bet = hand.bet
         new_hand.is_split = True
         hand.is_split = True
+        if (hand.cards and hand.cards[0].rank == 'A') or (new_hand.cards and new_hand.cards[0].rank == 'A'):
+            hand.is_from_split_aces = True
+            new_hand.is_from_split_aces = True
         
         # Place bet on new hand
         self.chips -= hand.bet

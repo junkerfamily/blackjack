@@ -37,6 +37,11 @@
                         <span class="settings-range-value" id="heckler-speed-display">1.05×</span>
                     </div>
                 </div>
+                <div class="settings-row">
+                    <label for="bankroll-setting-input" class="settings-label">Starting Bankroll</label>
+                    <input type="number" id="bankroll-setting-input" class="settings-input" min="1" max="1000000" step="1" value="1000">
+                    <span class="settings-helper" id="bankroll-setting-helper">Used when refreshing bankroll (max $1,000,000)</span>
+                </div>
                 <div class="settings-note" id="heckler-settings-note" hidden>
                     Speech synthesis is not supported in this browser.
                 </div>
@@ -77,18 +82,46 @@
                     </div>
                 </section>
 
+                <!-- Insurance / Even Money Offer -->
+                <div class="insurance-offer" id="insurance-offer">
+                    <button class="btn-insurance disabled" id="insurance-btn" aria-disabled="true" title="Available when dealer shows Ace">Insurance – pays 2:1</button>
+                    <button class="btn-insurance-decline" id="insurance-decline" style="display: none;">No thanks</button>
+                </div>
+
                 <!-- Game Management -->
                 <section class="game-management">
                     <button class="btn-secondary" id="new-game-btn" onclick="newGame()">New Game</button>
                     <button class="btn-secondary" id="refresh-bankroll-btn" onclick="refreshBankroll()">Refresh Bankroll</button>
-                    <div class="balance-display-inline">
-                        <span class="balance-label">Balance:</span>
-                        <span class="balance-amount" id="balance">$1,000</span>
-                    </div>
+                    <button class="btn-secondary" id="auto-mode-btn">Auto Mode</button>
                 </section>
 
                 <!-- Action Status Message -->
                 <div class="action-status" id="action-status"></div>
+
+                <!-- Auto Mode Panel -->
+                <div class="auto-mode-panel" id="auto-mode-panel" style="display: none;">
+                    <div class="auto-mode-card">
+                        <div class="auto-mode-header">Auto Mode</div>
+                        <div class="auto-mode-body">
+                            <label class="auto-mode-label" for="auto-bet-input">Default Bet</label>
+                            <input type="number" id="auto-bet-input" min="1" step="1" value="100">
+                            <label class="auto-mode-label" for="auto-hands-input">Hands to Play</label>
+                            <input type="number" id="auto-hands-input" min="1" step="1" value="5">
+                            <div class="auto-mode-label">Insurance Preference</div>
+                            <div class="auto-mode-radio-group">
+                                <label><input type="radio" name="auto-insurance" value="always"> Always take</label>
+                                <label><input type="radio" name="auto-insurance" value="never" checked> Never take</label>
+                            </div>
+                            <div class="auto-mode-actions">
+                                <button class="btn-primary" id="auto-start-btn">Start</button>
+                                <button class="btn-secondary" id="auto-cancel-btn">Cancel</button>
+                            </div>
+                            <div class="auto-mode-error" id="auto-error" aria-live="polite"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="auto-status" id="auto-status" style="display: none;"></div>
             </div>
 
             <div class="secondary-column">
@@ -124,6 +157,10 @@
                         <button class="btn-action" id="double-btn" onclick="playerDoubleDown()">Double Down</button>
                         <button class="btn-action" id="split-btn" onclick="playerSplit()" style="display: none;">Split</button>
                     </section>
+                    <div class="balance-display-block">
+                        <span class="balance-label">Balance:</span>
+                        <span class="balance-amount" id="balance">$1,000</span>
+                    </div>
                 </section>
 
                 <!-- Game History Panel -->

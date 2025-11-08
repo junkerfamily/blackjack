@@ -16,6 +16,11 @@ class BlackjackGame {
         this.gameHistory = []; // Track game history for the panel
         this.defaultBetAmount = null; // Default bet amount for quick play
         this.defaultBetStorageKey = 'blackjack_default_bet';
+        this.bankrollConfigKey = 'blackjack_bankroll_config';
+        this.defaultBankrollAmount = 1000;
+        this.bankrollAmount = this.defaultBankrollAmount;
+        this.bankrollSettingInput = null;
+        this.bankrollHelperElement = null;
         this.actionStatusElement = null; // Status message element
         this.actionStatusTimeout = null; // Timeout for clearing status
         this.hecklerElement = null;
@@ -38,6 +43,11 @@ class BlackjackGame {
         this.hecklerSettingsKey = 'blackjack_heckler_settings';
         this.hecklerPreferences = this.loadHecklerPreferences();
         this.pendingPreferredVoiceId = this.hecklerPreferences?.voiceId || null;
+        // Auto mode settings
+        this.autoSettingsKey = 'blackjack_auto_settings';
+        this.autoSettings = this.loadAutoSettings();
+        // Dedupe key for insurance outcome history entries per round
+        this.lastInsuranceOutcomeSig = null;
         if (this.hecklerPreferences?.rate && !Number.isNaN(parseFloat(this.hecklerPreferences.rate))) {
             this.hecklerSpeechRate = parseFloat(this.hecklerPreferences.rate);
         }
@@ -159,6 +169,122 @@ class BlackjackGame {
         }
     }
 
+    normalizeBankrollAmount(rawValue, fallback = this.defaultBankrollAmount) {
+        if (rawValue === null || rawValue === undefined || rawValue === '') {
+            return {
+                amount: fallback,
+                fallbackUsed: true,
+                clamped: false,
+                clampedToMin: false,
+                clampedToMax: false
+            };
+        }
+
+        const numeric = typeof rawValue === 'number' ? rawValue : parseInt(rawValue, 10);
+        if (!Number.isFinite(numeric)) {
+            return {
+                amount: fallback,
+                fallbackUsed: true,
+                clamped: false,
+                clampedToMin: false,
+                clampedToMax: false
+            };
+        }
+
+        const floored = Math.floor(numeric);
+        if (!Number.isFinite(floored)) {
+            return {
+                amount: fallback,
+                fallbackUsed: true,
+                clamped: false,
+                clampedToMin: false,
+                clampedToMax: false
+            };
+        }
+
+        const minApplied = floored < 1;
+        const maxApplied = floored > 1000000;
+        const clampedValue = Math.min(Math.max(floored, 1), 1000000);
+        return {
+            amount: clampedValue,
+            fallbackUsed: false,
+            clamped: minApplied || maxApplied,
+            clampedToMin: minApplied,
+            clampedToMax: maxApplied
+        };
+    }
+
+    loadBankrollConfig() {
+        if (typeof window === 'undefined' || !window.localStorage) {
+            return this.defaultBankrollAmount;
+        }
+
+        try {
+            const stored = window.localStorage.getItem(this.bankrollConfigKey);
+            if (!stored) {
+                return this.defaultBankrollAmount;
+            }
+            const parsed = JSON.parse(stored);
+            const { amount } = this.normalizeBankrollAmount(parsed?.amount, this.defaultBankrollAmount);
+            return amount;
+        } catch (error) {
+            console.warn('Failed to load bankroll config:', error);
+            return this.defaultBankrollAmount;
+        }
+    }
+
+    saveBankrollConfig(amount) {
+        if (typeof window === 'undefined' || !window.localStorage) {
+            return;
+        }
+        try {
+            window.localStorage.setItem(this.bankrollConfigKey, JSON.stringify({ amount }));
+        } catch (error) {
+            console.warn('Failed to save bankroll config:', error);
+        }
+    }
+
+    setBankrollAmount(rawValue, { fallback, persist = true, updateInput = true } = {}) {
+        const previousAmount = this.bankrollAmount ?? this.defaultBankrollAmount;
+        const fallbackAmount = fallback ?? previousAmount;
+        const {
+            amount,
+            fallbackUsed,
+            clamped,
+            clampedToMin,
+            clampedToMax
+        } = this.normalizeBankrollAmount(rawValue, fallbackAmount);
+
+        this.bankrollAmount = amount;
+
+        if (persist) {
+            this.saveBankrollConfig(amount);
+        }
+
+        if (updateInput && this.bankrollSettingInput) {
+            this.bankrollSettingInput.value = amount;
+        }
+
+        this.updateBankrollHelper();
+
+        return {
+            amount,
+            fallbackUsed,
+            clamped,
+            clampedToMin,
+            clampedToMax,
+            previous: previousAmount
+        };
+    }
+
+    updateBankrollHelper() {
+        if (!this.bankrollHelperElement) {
+            return;
+        }
+        const formatted = this.bankrollAmount.toLocaleString();
+        this.bankrollHelperElement.textContent = `Used when refreshing bankroll (max $1,000,000). Current: $${formatted}`;
+    }
+
     /**
      * Generate a stable identifier for a voice
      */
@@ -230,6 +356,55 @@ class BlackjackGame {
                 this.hecklerVoice = selectedVoice;
                 this.pendingPreferredVoiceId = selectedOption.value;
                 this.saveHecklerPreferences();
+                this.previewHecklerVoice();
+            }
+        }
+    }
+
+    /**
+     * Assign the preferred voice from saved preferences
+     */
+    assignPreferredVoice(voices) {
+        if (!voices || !Array.isArray(voices) || voices.length === 0) {
+            return;
+        }
+
+        // If we already have a voice assigned, keep it if it's still available
+        if (this.hecklerVoice) {
+            const currentIdentifier = this.getVoiceIdentifier(this.hecklerVoice);
+            const stillAvailable = voices.find((voice) => this.getVoiceIdentifier(voice) === currentIdentifier);
+            if (stillAvailable) {
+                return; // Voice is still available, no need to reassign
+            }
+        }
+
+        // Try to find the preferred voice from saved preferences
+        const preferredId = this.pendingPreferredVoiceId || this.hecklerPreferences?.voiceId;
+        if (preferredId) {
+            const preferredVoice = voices.find((voice) => this.getVoiceIdentifier(voice) === preferredId);
+            if (preferredVoice) {
+                this.hecklerVoice = preferredVoice;
+                this.pendingPreferredVoiceId = preferredId;
+                return;
+            }
+        }
+
+        // Fallback to default US English voice or first available US English voice
+        const filteredVoices = voices.filter((voice) => {
+            const lang = voice.lang || '';
+            return typeof lang === 'string' && lang.toLowerCase().startsWith('en-us');
+        });
+
+        if (filteredVoices.length > 0) {
+            // Try to find a default voice first
+            const defaultVoice = filteredVoices.find((voice) => voice.default);
+            if (defaultVoice) {
+                this.hecklerVoice = defaultVoice;
+                this.pendingPreferredVoiceId = this.getVoiceIdentifier(defaultVoice);
+            } else {
+                // Use first available US English voice
+                this.hecklerVoice = filteredVoices[0];
+                this.pendingPreferredVoiceId = this.getVoiceIdentifier(filteredVoices[0]);
             }
         }
     }
@@ -259,12 +434,47 @@ class BlackjackGame {
             this.hecklerSpeedRange = document.getElementById('heckler-speed-range');
             this.hecklerSpeedDisplay = document.getElementById('heckler-speed-display');
             this.hecklerSettingsNote = document.getElementById('heckler-settings-note');
+            this.bankrollSettingInput = document.getElementById('bankroll-setting-input');
+            this.bankrollHelperElement = document.getElementById('bankroll-setting-helper');
 
             // Only proceed if the essential elements exist
             if (!this.settingsToggle || !this.settingsPanel) {
                 console.warn('Settings panel elements not found in DOM');
                 return;
             }
+
+            if (this.bankrollSettingInput) {
+                // Ensure the input reflects the current bankroll preference
+                this.setBankrollAmount(this.bankrollAmount, { persist: false });
+
+                const applyBankrollChange = () => {
+                    const result = this.setBankrollAmount(this.bankrollSettingInput.value);
+
+                    if (result.fallbackUsed) {
+                        // Input was empty or invalid; reset to previous value without alerting the user
+                        this.bankrollSettingInput.value = result.previous;
+                        this.log('Bankroll settings input was empty or invalid; keeping previous value.', 'warn');
+                        return;
+                    }
+
+                    if (result.clamped) {
+                        const clampMessage = result.clampedToMin
+                            ? 'Minimum bankroll is $1'
+                            : 'Maximum bankroll is $1,000,000';
+                        this.showMessage(clampMessage, 'warn');
+                    }
+
+                    if (result.amount !== result.previous) {
+                        this.log(`Bankroll preference updated to $${result.amount.toLocaleString()}`, 'success');
+                    }
+                };
+
+                this.bankrollSettingInput.addEventListener('change', applyBankrollChange);
+            } else {
+                console.warn('Bankroll setting input not found in settings panel');
+            }
+
+            this.updateBankrollHelper();
 
             if (this.hecklerSpeedRange) {
                 const clampedRate = Math.min(
@@ -300,6 +510,7 @@ class BlackjackGame {
                     if (chosenVoice) {
                         this.hecklerVoice = chosenVoice;
                         this.saveHecklerPreferences();
+                        this.previewHecklerVoice();
                     }
                 });
             };
@@ -360,6 +571,10 @@ class BlackjackGame {
             this.settingsPanel.classList.add('open');
             this.settingsPanel.setAttribute('aria-hidden', 'false');
             this.settingsToggle.setAttribute('aria-expanded', 'true');
+            if (this.bankrollSettingInput) {
+                this.bankrollSettingInput.value = this.bankrollAmount;
+            }
+            this.updateBankrollHelper();
             if (!this.boundOutsideClickHandler) {
                 this.boundOutsideClickHandler = (event) => this.handleOutsideClick(event);
                 document.addEventListener('mousedown', this.boundOutsideClickHandler);
@@ -380,6 +595,7 @@ class BlackjackGame {
                 document.removeEventListener('keydown', this.boundEscapeHandler);
                 this.boundEscapeHandler = null;
             }
+            this.updateBankrollHelper();
         }
     }
 
@@ -401,47 +617,28 @@ class BlackjackGame {
      * Setup speech synthesis voice selection for the heckler
      */
     setupHecklerVoices() {
-        try {
-            const synth = window.speechSynthesis;
-            if (!synth) {
-                this.useSpeechSynthesis = false;
-                return;
-            }
-
-            const assignVoice = () => {
-                const voices = synth.getVoices();
-                if (!voices || !voices.length) {
-                    return;
-                }
-
-                const usVoices = voices.filter((voice) => {
-                    const lang = voice.lang || '';
-                    return typeof lang === 'string' && lang.toLowerCase().startsWith('en-us');
-                });
-
-                let selectedVoice = null;
-                if (this.pendingPreferredVoiceId) {
-                    selectedVoice = usVoices.find((voice) => this.getVoiceIdentifier(voice) === this.pendingPreferredVoiceId) || null;
-                }
-
-                if (!selectedVoice && usVoices.length > 0) {
-                    selectedVoice = usVoices[0];
-                    this.pendingPreferredVoiceId = this.getVoiceIdentifier(selectedVoice);
-                }
-
-                this.hecklerVoice = selectedVoice || null;
+        if (!this.useSpeechSynthesis) return;
+        const synth = window.speechSynthesis;
+        const loadVoices = () => {
+            const voices = synth.getVoices();
+            if (voices && voices.length) {
                 this.populateVoiceOptions(voices);
-                this.saveHecklerPreferences();
-            };
+                this.assignPreferredVoice(voices);
+            }
+        };
+        loadVoices();
+        synth.addEventListener('voiceschanged', loadVoices);
+        this.hecklerVoicesListener = loadVoices;
+    }
 
-            assignVoice();
-            synth.addEventListener('voiceschanged', assignVoice);
-            this.hecklerVoicesListener = assignVoice;
-        } catch (error) {
-            console.error('Heckler voice setup failed:', error);
-            this.useSpeechSynthesis = false;
-            this.hecklerVoice = null;
-        }
+    previewHecklerVoice() {
+        if (!this.useSpeechSynthesis || !this.hecklerVoice) return;
+        const synth = window.speechSynthesis;
+        const utterance = new SpeechSynthesisUtterance('Are you feeling lucky today?');
+        utterance.voice = this.hecklerVoice;
+        utterance.rate = this.hecklerSpeechRate;
+        synth.cancel();
+        synth.speak(utterance);
     }
 
     /**
@@ -734,8 +931,41 @@ class BlackjackGame {
         
         // Setup chip selection
         this.setupChipSelection();
+        const storedBankroll = this.loadBankrollConfig();
+        this.setBankrollAmount(storedBankroll, { persist: false, updateInput: false });
         this.initSettingsPanel();
         this.setupKeyboardHotkeys();
+        
+        // Wire insurance buttons
+        const insuranceBtn = document.getElementById('insurance-btn');
+        const insuranceDecline = document.getElementById('insurance-decline');
+        if (insuranceBtn) {
+            insuranceBtn.addEventListener('click', async () => {
+                const decision = insuranceBtn.dataset.decision || 'buy';
+                await this.sendInsuranceDecision(decision);
+            });
+        }
+        if (insuranceDecline) {
+            insuranceDecline.addEventListener('click', async () => {
+                await this.sendInsuranceDecision('decline');
+            });
+        }
+        
+        // Auto mode controls
+        this.autoPanelVisible = false;
+        const autoBtn = document.getElementById('auto-mode-btn');
+        const autoStartBtn = document.getElementById('auto-start-btn');
+        const autoCancelBtn = document.getElementById('auto-cancel-btn');
+        if (autoBtn) {
+            autoBtn.addEventListener('click', () => this.toggleAutoModePanel());
+        }
+        if (autoCancelBtn) {
+            autoCancelBtn.addEventListener('click', () => this.closeAutoModePanel());
+        }
+        if (autoStartBtn) {
+            autoStartBtn.addEventListener('click', () => this.handleAutoModeStart());
+        }
+        this.prefillAutoModeForm();
         
         // Enable chip buttons initially
         document.querySelectorAll('.chip').forEach(chip => {
@@ -748,6 +978,27 @@ class BlackjackGame {
         } catch (error) {
             console.error('Failed to initialize game:', error);
             this.showMessage('Game initialization failed. Please refresh the page.', 'error');
+        }
+    }
+
+    async sendInsuranceDecision(decision) {
+        if (!this.gameId) return;
+        try {
+            this.showLoading();
+            const result = await this.apiCall('/api/insurance', 'POST', {
+                game_id: this.gameId,
+                decision
+            });
+            if (result.success) {
+                this.updateGameState(result.game_state);
+            } else {
+                this.showMessage(result.error || 'Insurance action failed', 'error');
+            }
+        } catch (e) {
+            // error surfaced by apiCall
+        } finally {
+            this.hideLoading();
+            this.updateButtonStates();
         }
     }
 
@@ -1061,10 +1312,11 @@ class BlackjackGame {
             if (result.success) {
                 this.gameId = result.game_id;
                 this.updateGameState(result.game_state);
-                this.previousBalance = this.gameState?.player?.chips || 1000;
+                this.previousBalance = 1000; // Reset tracking for fresh start
+                this.lastInsuranceOutcomeSig = null;
                 this.updateButtonStates();
-                this.showMessage('Place your bet to start!');
-                this.log('New game round started - betting area enabled (balance preserved)', 'success');
+                this.showMessage('Bankroll refreshed! Place your bet to start!');
+                this.log('Bankroll refreshed - new game with $1000', 'success');
             }
         } catch (error) {
             this.log(`New game error: ${error.message}`, 'error');
@@ -1078,28 +1330,37 @@ class BlackjackGame {
      */
     async refreshBankroll() {
         try {
+            const { amount: bankrollAmount } = this.normalizeBankrollAmount(
+                this.bankrollAmount,
+                this.defaultBankrollAmount
+            );
+
+            if (bankrollAmount !== this.bankrollAmount) {
+                this.setBankrollAmount(bankrollAmount);
+            }
+
             this.showLoading();
             this.clearBet();
             this.clearHands();
             this.hideGameControls();
             this.showBettingArea();
-            
-            // Create a completely new game with fresh $1000 bankroll
+
             const result = await this.apiCall('/api/new_game', 'POST', {
-                starting_chips: 1000
+                starting_chips: bankrollAmount
             });
-            
+
             if (result.success) {
                 this.gameId = result.game_id;
                 this.updateGameState(result.game_state);
-                this.previousBalance = 1000; // Reset tracking for fresh start
+                this.previousBalance = bankrollAmount; // Reset tracking for fresh start
                 this.updateButtonStates();
-                this.showMessage('Bankroll refreshed! Place your bet to start!');
-                this.log('Bankroll refreshed - new game with $1000', 'success');
+                this.showMessage(`Bankroll refreshed! Starting with $${bankrollAmount.toLocaleString()}. Place your bet to start!`);
+                this.log(`Bankroll refreshed - new game with $${bankrollAmount.toLocaleString()}`, 'success');
             }
         } catch (error) {
-            this.log(`Refresh bankroll error: ${error.message}`, 'error');
-            this.showMessage('Error refreshing bankroll', 'error');
+            const errorMessage = error?.message || 'Error refreshing bankroll';
+            this.log(`Refresh bankroll error: ${errorMessage}`, 'error');
+            this.showMessage(errorMessage, 'error');
         } finally {
             this.hideLoading();
         }
@@ -1546,6 +1807,12 @@ class BlackjackGame {
                 this.renderHands();
                 this.updateButtonStates();
                 
+                // If current hand is from split aces, surface a clear hint
+                const hand = this.gameState?.player?.hands?.[this.gameState.player.current_hand_index];
+                if (hand?.is_from_split_aces) {
+                    this.setActionStatus('split aces: one card only', 4000);
+                }
+                
                 // Double down automatically hits once and stands
                 await this.playDealerTurn();
             }
@@ -1779,11 +2046,195 @@ class BlackjackGame {
             balanceElement.textContent = `$${state.player.chips}`;
         }
         
+        // Update insurance UI
+        this.updateInsuranceUI();
+        this.updateAutoStatusUI();
+        
+        // Show insurance outcome if present
+        const outcome = state.insurance_outcome;
+        if (outcome) {
+            const sig = `${outcome.paid}:${outcome.amount}`;
+            if (sig !== this.lastInsuranceOutcomeSig) {
+                if (outcome.paid) {
+                    this.setActionStatus(`insurance paid $${outcome.amount}`, 5000);
+                    this.showMessage(`Insurance paid $${outcome.amount}`, 'success');
+                    this.addInsuranceHistory(true, outcome.amount);
+                } else if (outcome.paid === false) {
+                    this.setActionStatus('insurance lost', 4000);
+                    this.showMessage('Insurance lost', 'error');
+                    this.addInsuranceHistory(false, outcome.amount);
+                }
+                this.lastInsuranceOutcomeSig = sig;
+            }
+        }
+        
         // Update hand values
         this.updateHandValues();
         
         // Don't call updateButtonStates() here - it might be called while isProcessing is true
         // Call it explicitly after hideLoading() or when you know isProcessing is false
+    }
+
+    updateInsuranceUI() {
+        const container = document.getElementById('insurance-offer');
+        const btn = document.getElementById('insurance-btn');
+        const decline = document.getElementById('insurance-decline');
+        if (!container || !btn || !decline || !this.gameState) return;
+        
+        const offerActive = !!this.gameState.insurance_offer_active;
+        const evenMoney = !!this.gameState.even_money_offer_active;
+        
+        // Container is always visible
+        container.style.display = 'flex';
+        
+        if (offerActive) {
+            const cost = this.gameState.insurance_amount || 0;
+            btn.textContent = `Insurance – pays 2:1 – cost: $${cost}`;
+            btn.dataset.decision = 'buy';
+            btn.classList.remove('disabled');
+            btn.classList.add('active');
+            btn.disabled = false;
+            btn.setAttribute('aria-disabled', 'false');
+            btn.title = 'Insurance available';
+            decline.style.display = 'inline-block';
+            this.setActionStatus('insurance decision required');
+        } else if (evenMoney) {
+            const hands = this.gameState.player?.hands || [];
+            const idx = this.gameState.player?.current_hand_index || 0;
+            const hand = hands[idx];
+            const bet = hand?.bet || 0;
+            btn.textContent = `Even money – pays 1:1 – payout: $${bet}`;
+            btn.dataset.decision = 'even_money';
+            btn.classList.remove('disabled');
+            btn.classList.add('active');
+            btn.disabled = false;
+            btn.setAttribute('aria-disabled', 'false');
+            btn.title = 'Even money available';
+            decline.style.display = 'inline-block';
+            this.setActionStatus('even money available');
+        } else {
+            btn.textContent = 'Insurance – pays 2:1';
+            btn.dataset.decision = '';
+            btn.classList.add('disabled');
+            btn.classList.remove('active');
+            btn.disabled = true;
+            btn.setAttribute('aria-disabled', 'true');
+            btn.title = 'Available when dealer shows Ace';
+            decline.style.display = 'none';
+        }
+    }
+
+    prefillAutoModeForm() {
+        const betInput = document.getElementById('auto-bet-input');
+        const handsInput = document.getElementById('auto-hands-input');
+        const radios = document.querySelectorAll('input[name="auto-insurance"]');
+        if (!betInput || !handsInput || radios.length === 0) return;
+        const defaultBet = this.autoSettings?.defaultBet ?? this.defaultBetAmount ?? 100;
+        betInput.value = defaultBet || 100;
+        const hands = this.autoSettings?.hands ?? 5;
+        handsInput.value = hands;
+        const insurancePref = this.autoSettings?.insurance ?? 'never';
+        radios.forEach(radio => {
+            radio.checked = radio.value === insurancePref;
+        });
+        const errorEl = document.getElementById('auto-error');
+        if (errorEl) errorEl.textContent = '';
+    }
+
+    toggleAutoModePanel() {
+        if (this.autoPanelVisible) {
+            this.closeAutoModePanel();
+        } else {
+            this.openAutoModePanel();
+        }
+    }
+
+    openAutoModePanel() {
+        const panel = document.getElementById('auto-mode-panel');
+        if (!panel) return;
+        this.autoPanelVisible = true;
+        panel.style.display = 'block';
+        this.prefillAutoModeForm();
+    }
+
+    closeAutoModePanel() {
+        const panel = document.getElementById('auto-mode-panel');
+        if (!panel) return;
+        this.autoPanelVisible = false;
+        panel.style.display = 'none';
+        const errorEl = document.getElementById('auto-error');
+        if (errorEl) errorEl.textContent = '';
+    }
+
+    async handleAutoModeStart() {
+        if (!this.gameId) {
+            await this.newGame();
+            if (!this.gameId) return;
+        }
+        const betInput = document.getElementById('auto-bet-input');
+        const handsInput = document.getElementById('auto-hands-input');
+        const radios = document.querySelectorAll('input[name="auto-insurance"]:checked');
+        const errorEl = document.getElementById('auto-error');
+        const autoStartBtn = document.getElementById('auto-start-btn');
+        if (!betInput || !handsInput || radios.length === 0) return;
+        const defaultBet = parseInt(betInput.value, 10);
+        const hands = parseInt(handsInput.value, 10);
+        const insuranceMode = radios[0].value;
+        if (!defaultBet || defaultBet <= 0) {
+            if (errorEl) errorEl.textContent = 'Enter a valid default bet.';
+            return;
+        }
+        if (!hands || hands <= 0) {
+            if (errorEl) errorEl.textContent = 'Enter how many hands to play.';
+            return;
+        }
+        if (errorEl) errorEl.textContent = '';
+        const payload = {
+            game_id: this.gameId,
+            default_bet: defaultBet,
+            hands,
+            insurance_mode: insuranceMode
+        };
+        try {
+            if (autoStartBtn) autoStartBtn.disabled = true;
+            this.showLoading();
+            const result = await this.apiCall('/api/auto_mode/start', 'POST', payload);
+            if (result.success) {
+                this.updateGameState(result.game_state);
+                this.saveAutoSettings({ defaultBet, hands, insurance: insuranceMode });
+                const autoStatus = result.game_state?.auto_mode?.status;
+                if (autoStatus) {
+                    this.showMessage(autoStatus, 'info');
+                } else {
+                    this.showMessage(result.message || 'Auto mode complete', 'info');
+                }
+                this.closeAutoModePanel();
+            } else {
+                const errorMsg = result.error || result.message || 'Auto mode failed';
+                this.showMessage(errorMsg, 'error');
+                if (errorEl) errorEl.textContent = errorMsg;
+            }
+        } catch (error) {
+            if (errorEl) errorEl.textContent = error.message || 'Auto mode failed';
+        } finally {
+            this.hideLoading();
+            if (autoStartBtn) autoStartBtn.disabled = false;
+            this.updateButtonStates();
+            this.updateAutoStatusUI();
+        }
+    }
+
+    updateAutoStatusUI() {
+        const statusEl = document.getElementById('auto-status');
+        if (!statusEl) return;
+        const autoMode = this.gameState?.auto_mode;
+        if (autoMode?.status) {
+            statusEl.style.display = 'block';
+            statusEl.textContent = autoMode.status;
+        } else {
+            statusEl.style.display = 'none';
+            statusEl.textContent = '';
+        }
     }
 
     /**
@@ -1866,30 +2317,46 @@ class BlackjackGame {
             
             if (hitBtn) {
                 hitBtn.disabled = true;
+                hitBtn.removeAttribute('title');
                 this.log('Hit button disabled (game over)', 'action');
             } else {
                 this.log('ERROR: hit-btn element not found!', 'error');
             }
             if (standBtn) standBtn.disabled = true;
-            if (doubleBtn) doubleBtn.disabled = true;
+            if (doubleBtn) {
+                doubleBtn.disabled = true;
+                doubleBtn.removeAttribute('title');
+            }
             if (splitBtn) splitBtn.disabled = true;
             
             return;
         }
         
         const playerHand = this.gameState.player?.hands?.[this.gameState.player.current_hand_index];
+        const isSplitAces = !!playerHand?.is_from_split_aces;
+        const insuranceActive = !!this.gameState.insurance_offer_active || !!this.gameState.even_money_offer_active;
+        const autoActive = !!this.gameState.auto_mode?.active;
         
         // Enable/disable double down
         const doubleBtn = document.getElementById('double-btn');
         if (doubleBtn && playerHand) {
-            const canDouble = playerHand.can_double_down && this.gameState.state === 'player_turn';
+            const canDouble = playerHand.can_double_down && this.gameState.state === 'player_turn' && !isSplitAces && !insuranceActive && !autoActive;
             doubleBtn.disabled = !canDouble;
+            if (isSplitAces) {
+                doubleBtn.title = 'split aces: one card only';
+            } else if (insuranceActive) {
+                doubleBtn.title = 'insurance decision required';
+            } else if (autoActive) {
+                doubleBtn.title = 'auto mode running';
+            } else {
+                doubleBtn.removeAttribute('title');
+            }
         }
         
         // Enable/disable split
         const splitBtn = document.getElementById('split-btn');
         if (splitBtn && playerHand) {
-            const canSplit = playerHand.can_split && this.gameState.state === 'player_turn';
+            const canSplit = playerHand.can_split && this.gameState.state === 'player_turn' && !insuranceActive && !autoActive;
             splitBtn.style.display = canSplit ? 'block' : 'none';
             splitBtn.disabled = !canSplit;
         }
@@ -1904,18 +2371,41 @@ class BlackjackGame {
         if (!hitBtn) {
             this.log('ERROR: hit-btn element not found in DOM!', 'error');
         } else {
-            const shouldBeDisabled = !isPlayerTurn || this.isProcessing;
+            const shouldBeDisabled = !isPlayerTurn || this.isProcessing || isSplitAces || insuranceActive || autoActive;
             hitBtn.disabled = shouldBeDisabled;
+            if (isSplitAces) {
+                hitBtn.title = 'split aces: one card only';
+            } else if (insuranceActive) {
+                hitBtn.title = 'insurance decision required';
+                this.setActionStatus('insurance decision required', 3000);
+            } else if (autoActive) {
+                hitBtn.title = 'auto mode running';
+            } else {
+                hitBtn.removeAttribute('title');
+            }
             this.log(`Hit button - disabled: ${hitBtn.disabled}, shouldBeDisabled: ${shouldBeDisabled}`, 'action');
         }
         
         if (!standBtn) {
-            this.log('ERROR: stand-btn element not found in DOM!', 'error');
+            this.log('ERROR: stand-btn element not found!', 'error');
         } else {
-            const shouldBeDisabled = !isPlayerTurn || this.isProcessing;
+            const shouldBeDisabled = !isPlayerTurn || this.isProcessing || insuranceActive || autoActive;
             standBtn.disabled = shouldBeDisabled;
-            this.log(`Stand button - disabled: ${standBtn.disabled}, shouldBeDisabled: ${shouldBeDisabled}`, 'action');
+            if (autoActive) {
+                standBtn.title = 'auto mode running';
+            } else if (insuranceActive) {
+                standBtn.title = 'insurance decision required';
+            } else {
+                standBtn.removeAttribute('title');
+            }
         }
+        
+        // Disable new game/refresh buttons when auto active
+        const autoDisabled = autoActive;
+        const newGameBtn = document.getElementById('new-game-btn');
+        const refreshBtn = document.getElementById('refresh-bankroll-btn');
+        if (newGameBtn) newGameBtn.disabled = autoDisabled;
+        if (refreshBtn) refreshBtn.disabled = autoDisabled;
     }
 
     /**
@@ -2215,15 +2705,15 @@ class BlackjackGame {
             
             // Format result display
             let resultEmoji = '';
-            if (item.result === 'win' || item.result === 'blackjack') {
+            if (item.result === 'win' || item.result === 'blackjack' || item.result === 'insurance_win') {
                 resultEmoji = '✅';
-            } else if (item.result === 'loss') {
+            } else if (item.result === 'loss' || item.result === 'insurance_loss') {
                 resultEmoji = '❌';
             } else if (item.result === 'push') {
                 resultEmoji = '🤝';
             }
             
-            const resultText = item.result === 'blackjack' ? 'BLACKJACK' : item.displayResult;
+            const resultText = (item.result === 'blackjack') ? 'BLACKJACK' : item.displayResult;
             
             historyItem.innerHTML = `
                 <span class="history-result">${resultEmoji} ${resultText}</span>
@@ -2246,6 +2736,31 @@ class BlackjackGame {
             }
         } catch (error) {
             console.warn('Failed to load default bet:', error);
+        }
+    }
+
+    loadAutoSettings() {
+        try {
+            const stored = localStorage.getItem(this.autoSettingsKey);
+            if (!stored) return { defaultBet: null, hands: 5, insurance: 'never' };
+            const parsed = JSON.parse(stored);
+            return {
+                defaultBet: parsed?.defaultBet ?? null,
+                hands: parsed?.hands ?? 5,
+                insurance: parsed?.insurance ?? 'never'
+            };
+        } catch (error) {
+            console.warn('Failed to load auto settings:', error);
+            return { defaultBet: null, hands: 5, insurance: 'never' };
+        }
+    }
+
+    saveAutoSettings(settings) {
+        try {
+            localStorage.setItem(this.autoSettingsKey, JSON.stringify(settings));
+            this.autoSettings = settings;
+        } catch (error) {
+            console.warn('Failed to save auto settings:', error);
         }
     }
 
@@ -2291,6 +2806,21 @@ class BlackjackGame {
                 defaultChip.setAttribute('data-default', 'true');
             }
         }
+    }
+
+    addInsuranceHistory(paid, amount) {
+        const timestamp = new Date().toLocaleTimeString();
+        const historyItem = {
+            result: paid ? 'insurance_win' : 'insurance_loss',
+            displayResult: 'INSURANCE',
+            bet: 0,
+            amountDisplay: paid ? `+$${amount}` : `-$${amount}`,
+            balanceChange: paid ? amount : -amount,
+            timestamp
+        };
+        this.gameHistory.unshift(historyItem);
+        if (this.gameHistory.length > 5) this.gameHistory.pop();
+        this.updateHistoryDisplay();
     }
 }
 

@@ -711,3 +711,54 @@ def calculate_hand_value(cards):
 
 **Ready to start building? Begin with Phase 1: Core Game Logic!**
 
+### Pending Feature: Auto Mode
+
+**Goal**: Allow players to autoplay a set number of rounds using their configured default bet.
+
+**User Choices**
+- Default bet amount (use existing default bet UI, but prompt if not set)
+- Number of hands to autoplay (e.g., 5/10/25)
+- Insurance preference during auto mode:
+  - Always take insurance
+  - Never take insurance
+  - Follow existing manual behaviour (skip if not selected)
+- Abort behaviour: if bankroll drops below default bet before completing the requested hands, stop autoplay, show message “Auto mode stopped: insufficient bankroll”, return to manual control.
+
+**Backend Plan**
+1. Extend `BlackjackGame` with auto mode state:
+   - `auto_mode_active: bool`
+   - `auto_hands_remaining: int`
+   - `auto_default_bet: int`
+   - `auto_insurance_mode: Literal['always','never']`
+2. Add API endpoints:
+   - `POST /api/auto_mode/start` -> validate bankroll ≥ default bet, set state, return updated game state.
+   - `POST /api/auto_mode/stop` -> allow user to cancel.
+3. Game loop adjustments:
+   - After each round (in `_determine_results` or when game reaches GAME_OVER), if `auto_mode_active` and hands remaining > 0, automatically:
+     - Place bet (`auto_default_bet`), bail out if bankroll < bet → stop auto mode and return message.
+     - Deal cards, auto-play using existing logic: hit/stand via basic strategy? (Simplify: stand immediately after initial deal; configurable?)
+       - For MVP: stand immediately (player not interacting) to keep flow predictable.
+     - Insurance: follow preference (auto call `insurance_decision('buy')` or `'decline'`).
+     - Decrement hands remaining.
+     - When hands remaining reaches 0, stop auto mode and notify.
+4. Game state response should include auto mode status (`auto_mode_active`, `auto_hands_remaining`).
+
+**Frontend Plan**
+1. UI additions near default bet section:
+   - “Start Auto Mode” button opening a modal/panel to choose:
+     - Default bet amount field (prefill with current default bet; warn if missing)
+     - Number of hands (dropdown or input)
+     - Insurance preference (always / never)
+   - Display auto mode status banner (“Auto mode running – hands left: X”) with Stop button.
+2. While auto mode active:
+   - Disable manual controls (bet chips, action buttons) except “Stop Auto Mode”.
+   - Automatically show progress in history/status.
+   - Show toast/message when auto mode finishes or aborts.
+3. Handle backend responses:
+   - On insufficient bankroll => display modal “Auto mode stopped: insufficient bankroll after N hands”.
+   - On manual stop => confirm and reset state.
+
+**Tests**
+- Backend unit tests: start/stop flow, insufficient funds abort, insurance preference respected.
+- Frontend integration tests (if applicable): ensure UI transitions, disable controls, auto cycle.
+

@@ -134,3 +134,4 @@ Press Ctrl+C to stop the server
 💵 Placing bet: $500, chips before=$1400, chips after=$900
 💰 Win payout: hand_index=0, bet=$500, is_blackjack=True, payout=$1250, chips before=$900, chips after=$2150
 127.0.0.1 - - [03/Nov/2025 22:59:11] "POST /api/deal HTTP/1.1" 200 -
+127.0.0.1 - - [04/Nov/2025 08:55:41] "GET /blackjack HTTP/1.1" 200 -
