@@ -64,25 +64,30 @@ def find_free_port(start_port=5000, max_attempts=10):
     return None
 
 if __name__ == '__main__':
-    # Get port from environment variable or find a free one
-    port = int(os.environ.get('FLASK_PORT', 5000))
+    # Get port from environment variable (Render uses PORT, fallback to FLASK_PORT or 5000)
+    port = int(os.environ.get('PORT', os.environ.get('FLASK_PORT', 5000)))
     
-    # Check if port is available, if not find a free one
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(('', port))
-    except OSError:
-        print(f"⚠️  Port {port} is already in use. Finding a free port...")
-        port = find_free_port(5000)
-        if port is None:
-            print("❌ Could not find a free port. Please free up a port or specify FLASK_PORT.")
-            exit(1)
-        print(f"✅ Using port {port} instead")
+    # Check if port is available, if not find a free one (only for local dev)
+    if not os.environ.get('PORT'):  # PORT is set by Render, skip port checking in production
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('', port))
+        except OSError:
+            print(f"⚠️  Port {port} is already in use. Finding a free port...")
+            port = find_free_port(5000)
+            if port is None:
+                print("❌ Could not find a free port. Please free up a port or specify FLASK_PORT.")
+                exit(1)
+            print(f"✅ Using port {port} instead")
+    
+    # Run in debug mode only if PORT is not set (local development)
+    debug_mode = not bool(os.environ.get('PORT'))
     
     print(f"\n🚀 Blackjack server starting on port {port}")
     print(f"📍 Game: http://localhost:{port}/blackjack")
     print(f"📍 Card test: http://localhost:{port}/cards-test")
-    print(f"\nPress Ctrl+C to stop the server\n")
+    if debug_mode:
+        print(f"\nPress Ctrl+C to stop the server\n")
     
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)
 
