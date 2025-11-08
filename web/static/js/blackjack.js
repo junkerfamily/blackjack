@@ -21,6 +21,11 @@ class BlackjackGame {
         this.bankrollAmount = this.defaultBankrollAmount;
         this.bankrollSettingInput = null;
         this.bankrollHelperElement = null;
+        this.defaultDealerHitDelayMs = 1000;
+        this.dealerHitDelayKey = 'blackjack_dealer_delay_ms';
+        this.dealerHitDelayMs = this.loadDealerHitDelay();
+        this.dealerDelayInput = null;
+        this.dealerDelayHelperElement = null;
         this.actionStatusElement = null; // Status message element
         this.actionStatusTimeout = null; // Timeout for clearing status
         this.hecklerElement = null;
@@ -43,6 +48,13 @@ class BlackjackGame {
         this.hecklerSettingsKey = 'blackjack_heckler_settings';
         this.hecklerPreferences = this.loadHecklerPreferences();
         this.pendingPreferredVoiceId = this.hecklerPreferences?.voiceId || null;
+        this.voiceEnabled = this.hecklerPreferences?.enabled === true; // Default to false (disabled)
+        // Clear old corrupted settings that have enabled=true from before the fix
+        if (this.hecklerPreferences?.enabled === true) {
+            this.voiceEnabled = false;
+            this.hecklerPreferences.enabled = false;
+            this.saveHecklerPreferences();
+        }
         // Auto mode settings
         this.autoSettingsKey = 'blackjack_auto_settings';
         this.autoSettings = this.loadAutoSettings();
@@ -145,7 +157,8 @@ class BlackjackGame {
             const parsed = JSON.parse(stored);
             return {
                 voiceId: parsed?.voiceId || null,
-                rate: parsed?.rate || null
+                rate: parsed?.rate || null,
+                enabled: parsed?.enabled === true // Default to false (disabled) if not specified
             };
         } catch (error) {
             console.warn('Failed to load heckler preferences:', error);
@@ -161,7 +174,8 @@ class BlackjackGame {
         try {
             const payload = {
                 voiceId: this.pendingPreferredVoiceId || null,
-                rate: this.hecklerSpeechRate
+                rate: this.hecklerSpeechRate,
+                enabled: this.voiceEnabled
             };
             window.localStorage.setItem(this.hecklerSettingsKey, JSON.stringify(payload));
         } catch (error) {
@@ -285,6 +299,115 @@ class BlackjackGame {
         this.bankrollHelperElement.textContent = `Used when refreshing bankroll (max $1,000,000). Current: $${formatted}`;
     }
 
+    normalizeDealerHitDelay(rawValue, fallbackDelay = this.defaultDealerHitDelayMs) {
+        const minDelay = 0;
+        const maxDelay = 5000;
+        const fallbackParsed = Number.parseInt(fallbackDelay, 10);
+        const safeFallback = Number.isNaN(fallbackParsed)
+            ? this.defaultDealerHitDelayMs
+            : Math.min(Math.max(fallbackParsed, minDelay), maxDelay);
+
+        if (rawValue === undefined || rawValue === null || rawValue === '') {
+            return {
+                delay: safeFallback,
+                fallbackUsed: true,
+                clamped: false,
+                clampedToMin: false,
+                clampedToMax: false
+            };
+        }
+
+        const parsed = Number.parseInt(rawValue, 10);
+        if (Number.isNaN(parsed)) {
+            return {
+                delay: safeFallback,
+                fallbackUsed: true,
+                clamped: false,
+                clampedToMin: false,
+                clampedToMax: false
+            };
+        }
+
+        const clampedValue = Math.min(Math.max(parsed, minDelay), maxDelay);
+        return {
+            delay: clampedValue,
+            fallbackUsed: false,
+            clamped: clampedValue !== parsed,
+            clampedToMin: clampedValue === minDelay && parsed < minDelay,
+            clampedToMax: clampedValue === maxDelay && parsed > maxDelay
+        };
+    }
+
+    loadDealerHitDelay() {
+        if (typeof window === 'undefined' || !window.localStorage) {
+            return this.defaultDealerHitDelayMs;
+        }
+
+        try {
+            const stored = window.localStorage.getItem(this.dealerHitDelayKey);
+            if (stored === null || stored === undefined) {
+                return this.defaultDealerHitDelayMs;
+            }
+            const { delay } = this.normalizeDealerHitDelay(stored, this.defaultDealerHitDelayMs);
+            return delay;
+        } catch (error) {
+            console.warn('Failed to load dealer delay config:', error);
+            return this.defaultDealerHitDelayMs;
+        }
+    }
+
+    saveDealerHitDelay(delay) {
+        if (typeof window === 'undefined' || !window.localStorage) {
+            return;
+        }
+        try {
+            window.localStorage.setItem(this.dealerHitDelayKey, String(delay));
+        } catch (error) {
+            console.warn('Failed to save dealer delay config:', error);
+        }
+    }
+
+    setDealerHitDelay(rawValue, { fallback, persist = true, updateInput = true } = {}) {
+        const previousDelay = Number.isFinite(this.dealerHitDelayMs) ? this.dealerHitDelayMs : this.defaultDealerHitDelayMs;
+        const fallbackDelay = fallback ?? previousDelay;
+        const {
+            delay,
+            fallbackUsed,
+            clamped,
+            clampedToMin,
+            clampedToMax
+        } = this.normalizeDealerHitDelay(rawValue, fallbackDelay);
+
+        this.dealerHitDelayMs = delay;
+
+        if (persist) {
+            this.saveDealerHitDelay(delay);
+        }
+
+        if (updateInput && this.dealerDelayInput) {
+            this.dealerDelayInput.value = delay;
+        }
+
+        this.updateDealerDelayHelper();
+
+        return {
+            delay,
+            fallbackUsed,
+            clamped,
+            clampedToMin,
+            clampedToMax,
+            previous: previousDelay
+        };
+    }
+
+    updateDealerDelayHelper() {
+        if (!this.dealerDelayHelperElement) {
+            return;
+        }
+        const delayDisplay = Number.isFinite(this.dealerHitDelayMs) ? this.dealerHitDelayMs : this.defaultDealerHitDelayMs;
+        this.dealerDelayHelperElement.textContent = `Delay between dealer hits (0-5000 ms). Current: ${delayDisplay} ms`;
+    }
+
     /**
      * Generate a stable identifier for a voice
      */
@@ -356,7 +479,9 @@ class BlackjackGame {
                 this.hecklerVoice = selectedVoice;
                 this.pendingPreferredVoiceId = selectedOption.value;
                 this.saveHecklerPreferences();
-                this.previewHecklerVoice();
+                if (this.voiceEnabled) {
+                    this.previewHecklerVoice();
+                }
             }
         }
     }
@@ -431,12 +556,15 @@ class BlackjackGame {
             this.settingsToggle = document.getElementById('settings-toggle');
             this.settingsPanel = document.getElementById('settings-panel');
             this.settingsCloseBtn = document.getElementById('settings-close');
+            this.hecklerEnabledToggle = document.getElementById('heckler-enabled-toggle');
             this.hecklerVoiceSelect = document.getElementById('heckler-voice-select');
             this.hecklerSpeedRange = document.getElementById('heckler-speed-range');
             this.hecklerSpeedDisplay = document.getElementById('heckler-speed-display');
             this.hecklerSettingsNote = document.getElementById('heckler-settings-note');
             this.bankrollSettingInput = document.getElementById('bankroll-setting-input');
             this.bankrollHelperElement = document.getElementById('bankroll-setting-helper');
+            this.dealerDelayInput = document.getElementById('dealer-delay-input');
+            this.dealerDelayHelperElement = document.getElementById('dealer-delay-helper');
 
             // Only proceed if the essential elements exist
             if (!this.settingsToggle || !this.settingsPanel) {
@@ -475,7 +603,52 @@ class BlackjackGame {
                 console.warn('Bankroll setting input not found in settings panel');
             }
 
+            if (this.dealerDelayInput) {
+                this.dealerDelayInput.value = this.dealerHitDelayMs;
+                const applyDealerDelayChange = () => {
+                    const result = this.setDealerHitDelay(this.dealerDelayInput.value);
+
+                    if (result.fallbackUsed) {
+                        this.dealerDelayInput.value = result.previous;
+                        this.log('Dealer delay input was empty or invalid; keeping previous value.', 'warn');
+                        return;
+                    }
+
+                    if (result.clamped) {
+                        const clampMessage = result.clampedToMin
+                            ? 'Minimum dealer delay is 0 ms'
+                            : 'Maximum dealer delay is 5,000 ms';
+                        this.showMessage(clampMessage, 'warn');
+                    }
+
+                    if (result.delay !== result.previous) {
+                        this.log(`Dealer card delay updated to ${result.delay} ms`, 'success');
+                    }
+                };
+
+                this.dealerDelayInput.addEventListener('change', applyDealerDelayChange);
+                this.dealerDelayInput.addEventListener('blur', applyDealerDelayChange);
+            } else {
+                console.warn('Dealer delay setting input not found in settings panel');
+            }
+
             this.updateBankrollHelper();
+            this.updateDealerDelayHelper();
+
+            if (this.hecklerEnabledToggle) {
+                this.hecklerEnabledToggle.checked = this.voiceEnabled;
+                this.hecklerEnabledToggle.addEventListener('change', (event) => {
+                    this.voiceEnabled = event.target.checked;
+                    this.saveHecklerPreferences();
+                    const statusMessage = this.voiceEnabled ? 'Voice commentary enabled' : 'Voice commentary disabled';
+                    this.log(statusMessage, 'success');
+                    if (this.voiceEnabled) {
+                        this.previewHecklerVoice(true);
+                    } else {
+                        this.stopHecklerSpeech();
+                    }
+                });
+            }
 
             if (this.hecklerSpeedRange) {
                 const clampedRate = Math.min(
@@ -511,7 +684,9 @@ class BlackjackGame {
                     if (chosenVoice) {
                         this.hecklerVoice = chosenVoice;
                         this.saveHecklerPreferences();
-                        this.previewHecklerVoice();
+                        if (this.voiceEnabled) {
+                            this.previewHecklerVoice();
+                        }
                     }
                 });
             };
@@ -575,7 +750,14 @@ class BlackjackGame {
             if (this.bankrollSettingInput) {
                 this.bankrollSettingInput.value = this.bankrollAmount;
             }
+            if (this.dealerDelayInput) {
+                this.dealerDelayInput.value = this.dealerHitDelayMs;
+            }
+            if (this.hecklerEnabledToggle) {
+                this.hecklerEnabledToggle.checked = this.voiceEnabled;
+            }
             this.updateBankrollHelper();
+            this.updateDealerDelayHelper();
             if (!this.boundOutsideClickHandler) {
                 this.boundOutsideClickHandler = (event) => this.handleOutsideClick(event);
                 document.addEventListener('mousedown', this.boundOutsideClickHandler);
@@ -597,6 +779,7 @@ class BlackjackGame {
                 this.boundEscapeHandler = null;
             }
             this.updateBankrollHelper();
+            this.updateDealerDelayHelper();
         }
     }
 
@@ -632,8 +815,8 @@ class BlackjackGame {
         this.hecklerVoicesListener = loadVoices;
     }
 
-    previewHecklerVoice() {
-        if (!this.useSpeechSynthesis || !this.hecklerVoice) return;
+    previewHecklerVoice(force = false) {
+        if ((!force && !this.voiceEnabled) || !this.useSpeechSynthesis || !this.hecklerVoice) return;
         const synth = window.speechSynthesis;
         const utterance = new SpeechSynthesisUtterance('Are you feeling lucky today?');
         utterance.voice = this.hecklerVoice;
@@ -646,7 +829,7 @@ class BlackjackGame {
      * Speak the heckler commentary using Web Speech API
      */
     speakHecklerLine(message, token) {
-        if (!this.useSpeechSynthesis || !message || typeof window === 'undefined') return false;
+        if (!this.voiceEnabled || !this.useSpeechSynthesis || !message || typeof window === 'undefined') return false;
         const synth = window.speechSynthesis;
         if (!synth) return false;
 
@@ -933,7 +1116,7 @@ class BlackjackGame {
         // Setup chip selection
         this.setupChipSelection();
         const storedBankroll = this.loadBankrollConfig();
-        this.setBankrollAmount(storedBankroll, { persist: false, updateInput: false });
+        this.setBankrollAmount(storedBankroll, { persist: false });
         this.initSettingsPanel();
         this.setupKeyboardHotkeys();
         
@@ -1879,13 +2062,17 @@ class BlackjackGame {
         
         // If dealer has more cards than currently displayed, render them progressively
         if (finalDealerHand.length > currentDealerCardCount) {
+            const dealerHitDelay = Math.max(
+                0,
+                Number.isFinite(this.dealerHitDelayMs) ? this.dealerHitDelayMs : this.defaultDealerHitDelayMs
+            );
             // Start rendering from the first new card (index = currentDealerCardCount)
             // This will be index 2 if dealer had 2 initial cards and is now hitting
             for (let i = currentDealerCardCount; i < finalDealerHand.length; i++) {
                 const card = finalDealerHand[i];
                 // Add delay before each new card (except the first one, unless in auto mode)
-                if (!isAutoMode && i > currentDealerCardCount) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
+                if (!isAutoMode && i > currentDealerCardCount && dealerHitDelay > 0) {
+                    await new Promise((resolve) => setTimeout(resolve, dealerHitDelay));
                 }
                 // Render the card with animation
                 const delay = 0; // No delay for individual card animation
@@ -2963,3 +3150,106 @@ function refreshBankroll() {
         game.refreshBankroll();
     }
 }
+
+/**
+ * Rules Panel Management
+ */
+let rulesPanel = {
+    isOpen: false,
+    currentPage: 'basic',
+    
+    init() {
+        const infoToggle = document.getElementById('info-toggle');
+        const rulesCloseBtn = document.getElementById('rules-close');
+        const rulesNextBtn = document.getElementById('rules-next-btn');
+        const rulesPrevBtn = document.getElementById('rules-prev-btn');
+        
+        if (infoToggle) {
+            infoToggle.addEventListener('click', () => this.toggle());
+        }
+        
+        if (rulesCloseBtn) {
+            rulesCloseBtn.addEventListener('click', () => this.close());
+        }
+        
+        if (rulesNextBtn) {
+            rulesNextBtn.addEventListener('click', () => this.showPage('advanced'));
+        }
+        
+        if (rulesPrevBtn) {
+            rulesPrevBtn.addEventListener('click', () => this.showPage('basic'));
+        }
+        
+        // Close rules panel when clicking outside
+        document.addEventListener('click', (e) => {
+            const rulesPanelEl = document.getElementById('rules-panel');
+            const infoToggleEl = document.getElementById('info-toggle');
+            
+            if (this.isOpen && rulesPanelEl && !rulesPanelEl.contains(e.target) && !infoToggleEl.contains(e.target)) {
+                this.close();
+            }
+        });
+        
+        // Close rules panel with Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.isOpen) {
+                this.close();
+            }
+        });
+    },
+    
+    toggle() {
+        if (this.isOpen) {
+            this.close();
+        } else {
+            this.open();
+        }
+    },
+    
+    open() {
+        const rulesPanelEl = document.getElementById('rules-panel');
+        const settingsPanelEl = document.getElementById('settings-panel');
+        
+        if (rulesPanelEl) {
+            rulesPanelEl.classList.add('open');
+            rulesPanelEl.setAttribute('aria-hidden', 'false');
+            this.isOpen = true;
+            
+            // Close settings panel if open
+            if (settingsPanelEl && settingsPanelEl.classList.contains('open')) {
+                settingsPanelEl.classList.remove('open');
+                settingsPanelEl.setAttribute('aria-hidden', 'true');
+            }
+        }
+    },
+    
+    close() {
+        const rulesPanelEl = document.getElementById('rules-panel');
+        
+        if (rulesPanelEl) {
+            rulesPanelEl.classList.remove('open');
+            rulesPanelEl.setAttribute('aria-hidden', 'true');
+            this.isOpen = false;
+        }
+    },
+    
+    showPage(page) {
+        const basicPageEl = document.getElementById('rules-page-basic');
+        const advancedPageEl = document.getElementById('rules-page-advanced');
+        
+        if (page === 'basic') {
+            if (basicPageEl) basicPageEl.style.display = 'block';
+            if (advancedPageEl) advancedPageEl.style.display = 'none';
+            this.currentPage = 'basic';
+        } else if (page === 'advanced') {
+            if (basicPageEl) basicPageEl.style.display = 'none';
+            if (advancedPageEl) advancedPageEl.style.display = 'block';
+            this.currentPage = 'advanced';
+        }
+    }
+};
+
+// Initialize rules panel when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    rulesPanel.init();
+});

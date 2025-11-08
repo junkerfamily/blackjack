@@ -12,10 +12,59 @@
         <!-- Header -->
         <header class="table-header">
             <h1>🎰 CASINO BLACKJACK</h1>
-            <button class="settings-toggle" id="settings-toggle" aria-label="Heckler settings">
-                ⚙️
-            </button>
+            <div class="header-controls">
+                <button class="info-toggle" id="info-toggle" aria-label="Rules and help">
+                    ℹ️
+                </button>
+                <button class="settings-toggle" id="settings-toggle" aria-label="Heckler settings">
+                    ⚙️
+                </button>
+            </div>
         </header>
+
+        <!-- Rules Panel -->
+        <div class="rules-panel" id="rules-panel" role="dialog" aria-labelledby="rules-title" aria-hidden="true">
+            <div class="rules-header">
+                <span class="rules-title" id="rules-title">How to Play</span>
+                <button class="rules-close" id="rules-close" aria-label="Close rules">✕</button>
+            </div>
+            <div class="rules-content">
+                <!-- Basic Rules Page -->
+                <div class="rules-page" id="rules-page-basic">
+                    <h3>Basic Rules</h3>
+                    <ul>
+                        <li><strong>Goal:</strong> Beat the dealer by getting closer to 21 without going over.</li>
+                        <li><strong>Card Values:</strong> Cards 2-10 are worth face value. Face cards (J, Q, K) are worth 10. Aces are worth 1 or 11.</li>
+                        <li><strong>Blackjack:</strong> An Ace and a 10-value card dealt initially. Pays 3:2.</li>
+                        <li><strong>Bust:</strong> Going over 21 means you lose immediately.</li>
+                        <li><strong>Deal:</strong> You and dealer each get 2 cards. One dealer card is hidden.</li>
+                        <li><strong>Hit:</strong> Take another card.</li>
+                        <li><strong>Stand:</strong> Keep your current hand and let dealer play.</li>
+                    </ul>
+                    <div class="rules-navigation">
+                        <button class="rules-next-btn" id="rules-next-btn">Advanced Rules →</button>
+                    </div>
+                </div>
+
+                <!-- Advanced Rules Page -->
+                <div class="rules-page" id="rules-page-advanced" style="display: none;">
+                    <h3>Advanced Rules</h3>
+                    <ul>
+                        <li><strong>Double Down:</strong> Double your bet and receive exactly one more card. Best after 2 cards.</li>
+                        <li><strong>Split:</strong> If you have two cards of equal value, split them into two hands. Each hand gets one new card.</li>
+                        <li><strong>Split Aces:</strong> When splitting Aces, you get only one card per hand and cannot hit or double down.</li>
+                        <li><strong>Insurance:</strong> When dealer shows an Ace, bet up to half your bet that they have Blackjack. Pays 2:1 if correct.</li>
+                        <li><strong>Soft Hand:</strong> A hand with an Ace counted as 11 (like Ace-6 = soft 17).</li>
+                        <li><strong>Hard Hand:</strong> A hand where the Ace must count as 1, or no Aces (like 10-9 = hard 19).</li>
+                        <li><strong>Dealer Rules:</strong> Dealer must hit on 16 or less, must stand on 17 or more.</li>
+                        <li><strong>Push:</strong> If your hand ties the dealer's, it's a push and your bet is returned.</li>
+                    </ul>
+                    <div class="rules-navigation">
+                        <button class="rules-prev-btn" id="rules-prev-btn">← Basic Rules</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Settings Panel -->
         <div class="settings-panel" id="settings-panel" role="dialog" aria-labelledby="settings-title" aria-hidden="true">
@@ -24,6 +73,10 @@
                 <button class="settings-close" id="settings-close" aria-label="Close settings">✕</button>
             </div>
             <div class="settings-content">
+                <div class="settings-row">
+                    <label for="heckler-enabled-toggle" class="settings-label">Enable Voice</label>
+                    <input type="checkbox" id="heckler-enabled-toggle" class="settings-checkbox">
+                </div>
                 <div class="settings-row">
                     <label for="heckler-voice-select" class="settings-label">Voice</label>
                     <select id="heckler-voice-select" class="settings-select" disabled>
@@ -41,6 +94,11 @@
                     <label for="bankroll-setting-input" class="settings-label">Starting Bankroll</label>
                     <input type="number" id="bankroll-setting-input" class="settings-input" min="1" max="1000000" step="1" value="1000">
                     <span class="settings-helper" id="bankroll-setting-helper">Used when refreshing bankroll (max $1,000,000)</span>
+                </div>
+                <div class="settings-row">
+                    <label for="dealer-delay-input" class="settings-label">Dealer Card Delay (ms)</label>
+                    <input type="number" id="dealer-delay-input" class="settings-input" min="0" max="5000" step="50" value="1000">
+                    <span class="settings-helper" id="dealer-delay-helper">Delay between dealer hits (0-5000 ms)</span>
                 </div>
                 <div class="settings-note" id="heckler-settings-note" hidden>
                     Speech synthesis is not supported in this browser.
