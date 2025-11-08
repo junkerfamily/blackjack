@@ -1856,14 +1856,41 @@ class BlackjackGame {
     async playDealerTurn() {
         this.showMessage('Dealer playing...');
         
+        // Check if we're in auto mode - skip delays if so
+        const isAutoMode = this.gameState?.auto_mode?.active || false;
+        
         // Reveal dealer hole card
         if (this.dealerHandManager && this.dealerHandManager.getCount() > 0) {
             this.dealerHandManager.revealCard(0);
+            // Small delay after revealing hole card (unless auto mode)
+            if (!isAutoMode) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
         }
         
-        // Wait for dealer to finish (in real game, this would be automated)
-        // For now, we'll get the final game state
+        // Get the final game state (dealer has already played on backend)
         await this.updateGameStateFromServer();
+        
+        // Get current dealer hand count before rendering new cards
+        // After revealing hole card, we should have 2 cards (both visible)
+        const currentDealerCardCount = this.dealerHandManager?.cards?.length || 0;
+        const finalDealerHand = this.gameState?.dealer?.full_hand || [];
+        
+        // If dealer has more cards than currently displayed, render them progressively
+        if (finalDealerHand.length > currentDealerCardCount) {
+            // Start rendering from the first new card (index = currentDealerCardCount)
+            // This will be index 2 if dealer had 2 initial cards and is now hitting
+            for (let i = currentDealerCardCount; i < finalDealerHand.length; i++) {
+                const card = finalDealerHand[i];
+                // Add delay before each new card (except the first one, unless in auto mode)
+                if (!isAutoMode && i > currentDealerCardCount) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+                // Render the card with animation
+                const delay = 0; // No delay for individual card animation
+                this.dealerHandManager.dealCard(card, false, delay);
+            }
+        }
         
         if (this.gameState.state === 'game_over') {
             await this.endGame();
