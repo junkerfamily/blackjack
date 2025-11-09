@@ -24,9 +24,10 @@ class GameState:
 class BlackjackGame:
     """Main game class that manages the blackjack game state"""
     
-    def __init__(self, starting_chips: int = 1000, num_decks: int = 1):
-        """Initialize a new blackjack game"""
+    def __init__(self, starting_chips: int = 1000, num_decks: int = 6):
+        """Initialize a new blackjack game (default 6 decks like a casino shoe)"""
         self.game_id: str = str(uuid.uuid4())
+        self.num_decks: int = num_decks
         self.deck: Deck = Deck(num_decks)
         self.deck.shuffle()
         self.player: Player = Player(starting_chips)
@@ -75,9 +76,15 @@ class BlackjackGame:
             if self.auto_mode_active and self.auto_hands_remaining > 0:
                 self.auto_status = f'Auto mode running ({self.auto_hands_remaining} hands remaining)'
         
-        # Reshuffle if low on cards (less than 20 cards remaining)
-        if len(self.deck) < 20:
-            self.deck.reset()
+        # Reshuffle if less than half the shoe remaining (3 decks out of 6)
+        # 6 decks = 312 cards, half = 156 cards (3 decks)
+        min_cards_threshold = (self.num_decks * 52) // 2
+        if len(self.deck) < min_cards_threshold:
+            import sys
+            print(f"🔄 Reshuffling shoe: {len(self.deck)} cards remaining (threshold: {min_cards_threshold})")
+            sys.stdout.flush()
+            self.deck = Deck(self.num_decks)
+            self.deck.shuffle()
     
     def place_bet(self, amount: int) -> Dict[str, Any]:
         """

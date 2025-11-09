@@ -16,7 +16,7 @@ blackjack_bp = Blueprint('blackjack', __name__, url_prefix='/api')
 def get_game(game_id: str) -> BlackjackGame:
     """Get a game by ID, create if doesn't exist"""
     if game_id not in active_games:
-        active_games[game_id] = BlackjackGame(starting_chips=10000)
+        active_games[game_id] = BlackjackGame(starting_chips=10000, num_decks=6)
     return active_games[game_id]
 
 
@@ -33,6 +33,7 @@ def new_game():
         else:
             # Create new game
             starting_chips = data.get('starting_chips', 1000)
+            num_decks = data.get('num_decks', 6)
             
             # Validate starting_chips
             try:
@@ -55,7 +56,16 @@ def new_game():
                     'error': 'Maximum starting chips is 1,000,000'
                 }), 400
             
-            game = BlackjackGame(starting_chips=starting_chips)
+            # Validate num_decks
+            try:
+                num_decks = int(num_decks)
+            except (ValueError, TypeError):
+                num_decks = 6
+            
+            if num_decks < 1 or num_decks > 8:
+                num_decks = 6
+            
+            game = BlackjackGame(starting_chips=starting_chips, num_decks=num_decks)
             active_games[game.game_id] = game
         
         game.new_game()
