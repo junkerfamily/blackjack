@@ -198,6 +198,21 @@ class BlackjackGame:
         
         current_hand.add_card(card)
         
+        # Check for 5 Card Charlie (5 cards without busting = automatic win)
+        if len(current_hand.cards) == 5 and not current_hand.is_bust():
+            current_hand_index = self.player.current_hand_index
+            self.player.win(current_hand_index)
+            
+            # Move to next hand or finish game
+            if self._move_to_next_hand():
+                return {'success': True, 'message': '5 Card Charlie! You win! Next hand', 'charlie': True}
+            else:
+                # All hands done - player wins with 5 Card Charlie
+                self.dealer.reveal_hole_card()
+                self.state = GameState.GAME_OVER
+                self.result = "win"
+                return {'success': True, 'message': '5 Card Charlie! You win!', 'charlie': True, 'game_over': True}
+        
         # Check if bust
         if current_hand.is_bust():
             # Move to next hand or dealer turn

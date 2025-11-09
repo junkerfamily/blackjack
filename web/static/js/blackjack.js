@@ -1900,8 +1900,14 @@ class BlackjackGame {
                     this.showMessage('Error: No cards received', 'error');
                 }
                 
-                // Check if player busted or got blackjack
-                if (handToUse.is_bust) {
+                // Check for 5 Card Charlie first (before bust check)
+                if (result.charlie) {
+                    this.log(`🎉 5 CARD CHARLIE! You win! (Value: ${handToUse.value})`, 'win');
+                    this.showMessage('5 Card Charlie! You win!', 'win');
+                    if (result.game_over) {
+                        await this.endGame();
+                    }
+                } else if (handToUse.is_bust) {
                     this.log(`PLAYER BUSTED! Final value: ${handToUse.value}`, 'bust');
                     this.showMessage(`Bust! You lose. (Value: ${handToUse.value})`, 'error');
                     await this.endGame();
