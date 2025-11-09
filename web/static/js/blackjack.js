@@ -1230,7 +1230,6 @@ class BlackjackGame {
     setupKeyboardHotkeys() {
         // Log hotkeys to console for user reference
         console.log('%c⌨️ KEYBOARD HOTKEYS AVAILABLE', 'color: #FFD700; font-size: 14px; font-weight: bold');
-        console.log('%cN%c = New Game', 'color: #FFD700; font-weight: bold', 'color: #fff');
         console.log('%cH%c = Hit', 'color: #FFD700; font-weight: bold', 'color: #fff');
         console.log('%cS%c = Stand', 'color: #FFD700; font-weight: bold', 'color: #fff');
         console.log('%cD%c = Deal Cards', 'color: #FFD700; font-weight: bold', 'color: #fff');
@@ -1246,10 +1245,6 @@ class BlackjackGame {
             const key = event.key.toLowerCase();
 
             switch(key) {
-                case 'n':
-                    this.log('⌨️ Hotkey: New Game (N)', 'action');
-                    this.newGame();
-                    break;
                 case 'h':
                     this.log('⌨️ Hotkey: Hit (H)', 'action');
                     this.playerHit();
@@ -1611,6 +1606,28 @@ class BlackjackGame {
      * Deal initial cards
      */
     async dealCards() {
+        if (this.isProcessing) {
+            this.log('DEAL DENIED: Another action is still processing', 'warn');
+            return;
+        }
+
+        // Ensure we have the latest game state before starting a new deal
+        const safeStates = ['betting', 'game_over'];
+        if (!this.gameState || !safeStates.includes(this.gameState.state)) {
+            try {
+                await this.updateGameStateFromServer();
+            } catch (error) {
+                this.log(`Failed to sync game state before dealing: ${error.message}`, 'error');
+            }
+        }
+
+        const stateBeforeDeal = this.gameState?.state;
+        if (stateBeforeDeal && !safeStates.includes(stateBeforeDeal)) {
+            this.log(`DEAL DENIED: Game state is "${stateBeforeDeal}", expected betting or game_over`, 'warn');
+            this.showMessage('Finish the current hand before dealing again.', 'warn');
+            return;
+        }
+
         this.log('Starting dealCards process', 'deal');
         this.setActionStatus('dealing cards');
         
@@ -1944,21 +1961,16 @@ class BlackjackGame {
                 
                 this.log(`After stand - State: ${this.gameState.state}, Result: ${this.gameState.result}`, 'action');
                 
-                // Backend automatically plays dealer and determines results
-                // So game should be over immediately after stand
-                if (this.gameState.state === 'game_over') {
-                    this.log('Game over after stand, determining winner...', 'action');
-                    await this.endGame();
+                const currentDealerCardCount = this.dealerHandManager?.getCount?.() || 0;
+                const finalDealerHand = this.gameState?.dealer?.full_hand;
+                const dealerNeedsPlayback = Array.isArray(finalDealerHand) && finalDealerHand.length > currentDealerCardCount;
+                
+                if (this.gameState.state !== 'game_over' || dealerNeedsPlayback) {
+                    this.log('Dealer still has actions to display; invoking playDealerTurn()', 'action');
+                    await this.playDealerTurn();
                 } else {
-                    // State might be 'dealer_turn' but backend already played - refresh
-                    this.log(`State is ${this.gameState.state}, refreshing from server...`, 'action');
-                    try {
-                        await this.updateGameStateFromServer();
-                        await this.endGame();
-                    } catch (refreshError) {
-                        this.log(`ERROR refreshing game state: ${refreshError.message}`, 'error');
-                        this.showMessage('Error: Could not refresh game state', 'error');
-                    }
+                    this.log('Dealer hand already resolved; finalizing round immediately', 'action');
+                    await this.endGame();
                 }
             } else {
                 this.log(`Stand failed: ${result.error || result.message}`, 'error');
@@ -2070,8 +2082,8 @@ class BlackjackGame {
             // This will be index 2 if dealer had 2 initial cards and is now hitting
             for (let i = currentDealerCardCount; i < finalDealerHand.length; i++) {
                 const card = finalDealerHand[i];
-                // Add delay before each new card (except the first one, unless in auto mode)
-                if (!isAutoMode && i > currentDealerCardCount && dealerHitDelay > 0) {
+                // Add delay before each new card (skip in auto mode)
+                if (!isAutoMode && dealerHitDelay > 0) {
                     await new Promise((resolve) => setTimeout(resolve, dealerHitDelay));
                 }
                 // Render the card with animation
@@ -2225,11 +2237,9 @@ class BlackjackGame {
         
         this.log(`Game ended. Result: ${result}, New balance: $${balance}`, 'action');
         
-        // Hide game controls, show betting area but keep it DISABLED until New Game is clicked
         this.hideGameControls();
-        this.showBettingAreaDisabled(); // Show but disabled
-        // Keep the bet amount for the next round
-        this.log(`Bet preserved for next round: $${this.currentBet}`, 'action');
+        this.showBettingArea();
+        this.log('Ready for next round - adjust your bet and deal when ready', 'action');
     }
 
     /**
@@ -2572,6 +2582,28 @@ class BlackjackGame {
                 doubleBtn.removeAttribute('title');
             }
             if (splitBtn) splitBtn.disabled = true;
+
+            const dealBtn = document.getElementById('deal-btn');
+            const autoActive = !!this.gameState.auto_mode?.active;
+            if (dealBtn) {
+                dealBtn.disabled = autoActive || this.isProcessing;
+                if (!dealBtn.disabled) {
+                    dealBtn.title = 'Deal the next hand';
+                } else if (autoActive) {
+                    dealBtn.title = 'auto mode running';
+                }
+            }
+
+            // Ensure betting UI is interactive again unless auto mode is active
+            if (!autoActive) {
+                document.querySelectorAll('.chip').forEach((chip) => {
+                    chip.disabled = false;
+                });
+                const clearBetBtn = document.getElementById('clear-bet-btn');
+                if (clearBetBtn) {
+                    clearBetBtn.disabled = false;
+                }
+            }
             
             return;
         }
@@ -2646,9 +2678,7 @@ class BlackjackGame {
         
         // Disable new game/refresh buttons when auto active
         const autoDisabled = autoActive;
-        const newGameBtn = document.getElementById('new-game-btn');
         const refreshBtn = document.getElementById('refresh-bankroll-btn');
-        if (newGameBtn) newGameBtn.disabled = autoDisabled;
         if (refreshBtn) refreshBtn.disabled = autoDisabled;
     }
 
@@ -2765,45 +2795,6 @@ class BlackjackGame {
         const clearBetBtn = document.getElementById('clear-bet-btn');
         if (clearBetBtn) {
             clearBetBtn.disabled = false;
-        }
-    }
-
-    /**
-     * Show betting area but keep it disabled (for when game ends)
-     */
-    showBettingAreaDisabled() {
-        const bettingArea = document.getElementById('betting-area');
-        if (bettingArea) {
-            bettingArea.style.display = 'block';
-            bettingArea.classList.remove('action-mode');
-            this.log('Betting area shown but DISABLED (game ended)', 'action');
-        }
-        
-        const bettingLabel = document.getElementById('betting-label');
-        if (bettingLabel) {
-            bettingLabel.textContent = 'Betting Locked';
-        }
-        
-        const gameControls = document.getElementById('game-controls');
-        if (gameControls) {
-            gameControls.style.display = 'none';
-        }
-        
-        // Disable Deal Cards button
-        const dealBtn = document.getElementById('deal-btn');
-        if (dealBtn) {
-            dealBtn.disabled = true;
-        }
-        
-        // Disable all chip buttons
-        document.querySelectorAll('.chip').forEach(chip => {
-            chip.disabled = true;
-        });
-        
-        // Disable Clear Bet button
-        const clearBetBtn = document.getElementById('clear-bet-btn');
-        if (clearBetBtn) {
-            clearBetBtn.disabled = true;
         }
     }
 
