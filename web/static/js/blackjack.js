@@ -2000,20 +2000,46 @@ class BlackjackGame {
             
             if (result.success) {
                 this.updateGameState(result.game_state);
-                this.renderHands();
+                
+                // Get the current hand after update
+                const handsArray = this.gameState?.player?.hands || [];
+                const requestedIndex = this.gameState?.player?.current_hand_index || 0;
+                const safeIndex = (requestedIndex < handsArray.length) ? requestedIndex : Math.max(0, handsArray.length - 1);
+                const playerHand = handsArray[safeIndex];
+                
+                if (playerHand && playerHand.cards && playerHand.cards.length > 0) {
+                    // Clear and re-render all cards to ensure the new card is displayed
+                    this.playerHandManager.clear();
+                    playerHand.cards.forEach((card, index) => {
+                        const delay = index * 150;
+                        this.playerHandManager.dealCard(card, false, delay);
+                    });
+                    
+                    // Wait for card animation to complete before proceeding
+                    const lastCardDelay = (playerHand.cards.length - 1) * 150;
+                    await new Promise(resolve => setTimeout(resolve, lastCardDelay + 300));
+                } else {
+                    // Fallback to renderHands if hand structure is unexpected
+                    this.renderHands();
+                }
+                
                 this.updateButtonStates();
                 
                 // If current hand is from split aces, surface a clear hint
-                const hand = this.gameState?.player?.hands?.[this.gameState.player.current_hand_index];
-                if (hand?.is_from_split_aces) {
+                if (playerHand?.is_from_split_aces) {
                     this.setActionStatus('split aces: one card only', 4000);
                 }
                 
                 // Double down automatically hits once and stands
                 await this.playDealerTurn();
+            } else {
+                // Show error message if double down failed
+                this.log(`Double down failed: ${result.error || result.message}`, 'error');
+                this.setActionStatus(result.error || result.message || 'Double down failed', 3000);
             }
         } catch (error) {
             this.log(`Double down error: ${error.message}`, 'error');
+            this.setActionStatus(`Error: ${error.message}`, 3000);
         } finally {
             this.hideLoading();
         }
