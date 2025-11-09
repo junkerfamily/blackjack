@@ -1470,6 +1470,35 @@ class BlackjackGame {
     }
 
     /**
+     * Show blackjack celebration animation
+     * @returns {Promise} Resolves when animation completes
+     */
+    showBlackjackCelebration() {
+        return new Promise((resolve) => {
+            const overlay = document.getElementById('blackjack-celebration');
+            if (!overlay) {
+                resolve();
+                return;
+            }
+
+            // Show the overlay
+            overlay.style.display = 'flex';
+            
+            // After 2.5 seconds, start fade out
+            setTimeout(() => {
+                overlay.classList.add('fade-out');
+                
+                // After fade out completes (300ms), hide and clean up
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                    overlay.classList.remove('fade-out');
+                    resolve();
+                }, 300);
+            }, 2500);
+        });
+    }
+
+    /**
      * Start a new game round (preserves balance)
      */
     async newGame() {
@@ -1738,6 +1767,7 @@ class BlackjackGame {
                     // Show result message based on outcome
                     if (result === 'blackjack') {
                         this.log('Player wins with BLACKJACK!', 'win');
+                        await this.showBlackjackCelebration();
                         this.showMessage('Blackjack! You Win! 🎉', 'win');
                     } else if (result === 'push') {
                         this.log('Round ends in PUSH (tie)', 'action');
@@ -2192,6 +2222,7 @@ class BlackjackGame {
             this.showMessage('You Win! 🎉', 'win');
         } else if (result === 'blackjack') {
             this.log('ROUND WINNER: PLAYER WINS WITH BLACKJACK!', 'win');
+            await this.showBlackjackCelebration();
             this.showMessage('Blackjack! You Win! 🎉', 'win');
         } else if (result === 'loss') {
             this.log('ROUND WINNER: DEALER WINS (Player loses)', 'bust');
