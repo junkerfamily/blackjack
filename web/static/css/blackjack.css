@@ -348,7 +348,9 @@ body {
 
 .rules-navigation {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
     margin-top: 16px;
     padding-top: 12px;
     border-top: 1px solid rgba(255, 215, 0, 0.2);
