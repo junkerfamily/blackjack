@@ -2378,6 +2378,8 @@ class BlackjackGame {
             btn.setAttribute('aria-disabled', 'true');
             btn.title = 'Available when dealer shows Ace';
             decline.style.display = 'none';
+            // Clear action status when insurance offer is no longer active
+            this.clearActionStatus();
         }
     }
 
