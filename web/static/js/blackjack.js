@@ -3154,6 +3154,8 @@ let rulesPanel = {
         const rulesCloseBtn = document.getElementById('rules-close');
         const rulesNextBtn = document.getElementById('rules-next-btn');
         const rulesPrevBtn = document.getElementById('rules-prev-btn');
+        const rulesCasinoInfoBtn = document.getElementById('rules-casino-info-btn');
+        const rulesBackBtn = document.getElementById('rules-back-btn');
         
         if (infoToggle) {
             infoToggle.addEventListener('click', () => this.toggle());
@@ -3169,6 +3171,14 @@ let rulesPanel = {
         
         if (rulesPrevBtn) {
             rulesPrevBtn.addEventListener('click', () => this.showPage('basic'));
+        }
+        
+        if (rulesCasinoInfoBtn) {
+            rulesCasinoInfoBtn.addEventListener('click', () => this.showPage('casino'));
+        }
+        
+        if (rulesBackBtn) {
+            rulesBackBtn.addEventListener('click', () => this.showPage('advanced'));
         }
         
         // Close rules panel when clicking outside
@@ -3227,15 +3237,23 @@ let rulesPanel = {
     showPage(page) {
         const basicPageEl = document.getElementById('rules-page-basic');
         const advancedPageEl = document.getElementById('rules-page-advanced');
+        const casinoPageEl = document.getElementById('rules-page-casino');
         
         if (page === 'basic') {
             if (basicPageEl) basicPageEl.style.display = 'block';
             if (advancedPageEl) advancedPageEl.style.display = 'none';
+            if (casinoPageEl) casinoPageEl.style.display = 'none';
             this.currentPage = 'basic';
         } else if (page === 'advanced') {
             if (basicPageEl) basicPageEl.style.display = 'none';
             if (advancedPageEl) advancedPageEl.style.display = 'block';
+            if (casinoPageEl) casinoPageEl.style.display = 'none';
             this.currentPage = 'advanced';
+        } else if (page === 'casino') {
+            if (basicPageEl) basicPageEl.style.display = 'none';
+            if (advancedPageEl) advancedPageEl.style.display = 'none';
+            if (casinoPageEl) casinoPageEl.style.display = 'block';
+            this.currentPage = 'casino';
         }
     }
 };
