@@ -380,3 +380,103 @@ def download_auto_mode_log():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@blackjack_bp.route('/log_hand', methods=['POST'])
+def log_hand():
+    """Log the current round's hand data to LogHand.log"""
+    try:
+        data = request.get_json() or {}
+        game_id = data.get('game_id')
+        
+        if not game_id:
+            return jsonify({'success': False, 'error': 'Game ID required'}), 400
+        
+        game = get_game(game_id)
+        result = game.log_hand()
+        
+        status = 200 if result.get('success') else 400
+        return jsonify({
+            'success': result.get('success', False),
+            'message': result.get('message', ''),
+            'game_state': game.get_game_state()
+        }), status
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@blackjack_bp.route('/download_log_hand', methods=['GET'])
+def download_log_hand():
+    """Download the LogHand.log file"""
+    try:
+        game_id = request.args.get('game_id')
+        
+        if not game_id:
+            return jsonify({'success': False, 'error': 'Game ID required'}), 400
+        
+        # Get the project root directory
+        current_file = os.path.abspath(__file__)
+        blackjack_dir = os.path.dirname(current_file)
+        project_root = os.path.dirname(blackjack_dir)
+        
+        # If project root doesn't exist, try current working directory
+        if not os.path.exists(project_root):
+            project_root = os.getcwd()
+        
+        # Construct log file path
+        log_path = os.path.join(project_root, 'LogHand.log')
+        
+        # Verify file exists
+        if not os.path.exists(log_path):
+            return jsonify({'success': False, 'error': 'Log file not found'}), 404
+        
+        # Send file as download
+        return send_file(
+            log_path,
+            mimetype='text/plain',
+            as_attachment=True,
+            download_name='LogHand.log'
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@blackjack_bp.route('/clear_log_hand', methods=['POST'])
+def clear_log_hand():
+    """Clear (empty) the LogHand.log file"""
+    try:
+        data = request.get_json() or {}
+        game_id = data.get('game_id')
+        
+        if not game_id:
+            return jsonify({'success': False, 'error': 'Game ID required'}), 400
+        
+        # Get the project root directory
+        current_file = os.path.abspath(__file__)
+        blackjack_dir = os.path.dirname(current_file)
+        project_root = os.path.dirname(blackjack_dir)
+        
+        # If project root doesn't exist, try current working directory
+        if not os.path.exists(project_root):
+            project_root = os.getcwd()
+        
+        # Construct log file path
+        log_path = os.path.join(project_root, 'LogHand.log')
+        
+        # Clear the file by opening in write mode (truncates to 0 bytes)
+        # If file doesn't exist, create an empty file
+        with open(log_path, 'w', encoding='utf-8') as log_file:
+            pass  # File is now empty
+        
+        return jsonify({
+            'success': True,
+            'message': 'Log file cleared successfully'
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+

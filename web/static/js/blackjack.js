@@ -42,24 +42,24 @@ class BlackjackGame {
         this.hecklerVoiceSelect = null;
         this.hecklerSpeedRange = null;
         this.hecklerSpeedDisplay = null;
+        this.hecklerTestButton = null;
         this.hecklerSettingsNote = null;
         this.boundOutsideClickHandler = null;
         this.boundEscapeHandler = null;
         this.hecklerSettingsKey = 'blackjack_heckler_settings';
         this.hecklerPreferences = this.loadHecklerPreferences();
         this.pendingPreferredVoiceId = this.hecklerPreferences?.voiceId || null;
-        this.voiceEnabled = this.hecklerPreferences?.enabled === true; // Default to false (disabled)
-        // Clear old corrupted settings that have enabled=true from before the fix
-        if (this.hecklerPreferences?.enabled === true) {
-            this.voiceEnabled = false;
-            this.hecklerPreferences.enabled = false;
-            this.saveHecklerPreferences();
+        if (this.hecklerPreferences === null || this.hecklerPreferences.enabled === undefined) {
+            this.voiceEnabled = true;
+        } else {
+            this.voiceEnabled = this.hecklerPreferences.enabled === true;
         }
         // Auto mode settings
         this.autoSettingsKey = 'blackjack_auto_settings';
         this.autoSettings = this.loadAutoSettings();
         // Dedupe key for insurance outcome history entries per round
         this.lastInsuranceOutcomeSig = null;
+        this.insuranceAnnouncedForGameId = null;
         if (this.hecklerPreferences?.rate && !Number.isNaN(parseFloat(this.hecklerPreferences.rate))) {
             this.hecklerSpeechRate = parseFloat(this.hecklerPreferences.rate);
         }
@@ -158,7 +158,7 @@ class BlackjackGame {
             return {
                 voiceId: parsed?.voiceId || null,
                 rate: parsed?.rate || null,
-                enabled: parsed?.enabled === true // Default to false (disabled) if not specified
+                enabled: typeof parsed?.enabled === 'boolean' ? parsed.enabled : undefined
             };
         } catch (error) {
             console.warn('Failed to load heckler preferences:', error);
@@ -560,6 +560,7 @@ class BlackjackGame {
             this.hecklerVoiceSelect = document.getElementById('heckler-voice-select');
             this.hecklerSpeedRange = document.getElementById('heckler-speed-range');
             this.hecklerSpeedDisplay = document.getElementById('heckler-speed-display');
+            this.hecklerTestButton = document.getElementById('heckler-test-button');
             this.hecklerSettingsNote = document.getElementById('heckler-settings-note');
             this.bankrollSettingInput = document.getElementById('bankroll-setting-input');
             this.bankrollHelperElement = document.getElementById('bankroll-setting-helper');
@@ -650,6 +651,12 @@ class BlackjackGame {
                 });
             }
 
+            if (this.hecklerTestButton) {
+                this.hecklerTestButton.addEventListener('click', () => {
+                    this.playVoiceTest();
+                });
+            }
+
             if (this.hecklerSpeedRange) {
                 const clampedRate = Math.min(
                     parseFloat(this.hecklerSpeedRange.max || '1.6'),
@@ -683,10 +690,12 @@ class BlackjackGame {
                     const chosenVoice = voices.find((voice) => this.getVoiceIdentifier(voice) === selectedId);
                     if (chosenVoice) {
                         this.hecklerVoice = chosenVoice;
-                        this.saveHecklerPreferences();
-                        if (this.voiceEnabled) {
-                            this.previewHecklerVoice();
+                        if (this.hecklerPreferences === null) {
+                            this.hecklerPreferences = {};
                         }
+                        this.hecklerPreferences.voiceId = selectedId;
+                        this.saveHecklerPreferences();
+                        this.previewHecklerVoice(true);
                     }
                 });
             };
@@ -706,6 +715,10 @@ class BlackjackGame {
                 if (this.hecklerSettingsNote) {
                     this.hecklerSettingsNote.hidden = true;
                 }
+                if (this.hecklerTestButton) {
+                    this.hecklerTestButton.disabled = false;
+                    this.hecklerTestButton.title = '';
+                }
             } else {
                 if (this.hecklerVoiceSelect) {
                     this.hecklerVoiceSelect.innerHTML = '';
@@ -720,6 +733,10 @@ class BlackjackGame {
                 }
                 if (this.hecklerSettingsNote) {
                     this.hecklerSettingsNote.hidden = false;
+                }
+                if (this.hecklerTestButton) {
+                    this.hecklerTestButton.disabled = true;
+                    this.hecklerTestButton.title = 'Speech synthesis not supported';
                 }
             }
         } catch (error) {
@@ -822,6 +839,39 @@ class BlackjackGame {
         utterance.voice = this.hecklerVoice;
         utterance.rate = this.hecklerSpeechRate;
         synth.cancel();
+        synth.speak(utterance);
+    }
+
+    playVoiceTest() {
+        if (!this.useSpeechSynthesis || typeof window === 'undefined' || !window.speechSynthesis) {
+            this.log('Voice test requested but speech synthesis is unavailable', 'warn');
+            return;
+        }
+        const synth = window.speechSynthesis;
+        try {
+            synth.cancel();
+        } catch (error) {
+            console.warn('Failed to cancel speech synthesis before test:', error);
+        }
+        const utterance = new SpeechSynthesisUtterance('Testing 1, Testing 2, Testing 3.');
+        if (this.hecklerVoice) {
+            utterance.voice = this.hecklerVoice;
+        } else {
+            const voices = synth.getVoices();
+            const usVoice = voices.find((voice) => {
+                const lang = voice.lang || '';
+                return typeof lang === 'string' && lang.toLowerCase().startsWith('en-us');
+            });
+            if (usVoice) {
+                utterance.voice = usVoice;
+                this.hecklerVoice = usVoice;
+                this.pendingPreferredVoiceId = this.getVoiceIdentifier(usVoice);
+                this.saveHecklerPreferences();
+            }
+        }
+        utterance.rate = this.hecklerSpeechRate;
+        utterance.pitch = 1;
+        utterance.volume = 0.9;
         synth.speak(utterance);
     }
 
@@ -1120,6 +1170,14 @@ class BlackjackGame {
         this.initSettingsPanel();
         this.setupKeyboardHotkeys();
         
+        if (this.hecklerPreferences === null) {
+            this.hecklerPreferences = {};
+        }
+        if (this.hecklerPreferences.enabled === undefined) {
+            this.hecklerPreferences.enabled = this.voiceEnabled;
+            this.saveHecklerPreferences();
+        }
+        
         // Wire insurance buttons
         const insuranceBtn = document.getElementById('insurance-btn');
         const insuranceDecline = document.getElementById('insurance-decline');
@@ -1150,6 +1208,27 @@ class BlackjackGame {
             autoStartBtn.addEventListener('click', () => this.handleAutoModeStart());
         }
         this.prefillAutoModeForm();
+        
+        // Log Hand button
+        const logHandBtn = document.getElementById('log-hand-btn');
+        if (logHandBtn) {
+            logHandBtn.addEventListener('click', () => this.handleLogHand());
+        }
+        
+        // Download LogHand.log link
+        const downloadLogHandLink = document.getElementById('download-log-hand-link');
+        if (downloadLogHandLink) {
+            downloadLogHandLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.downloadLogHand();
+            });
+        }
+        
+        // Clear Log Hand button
+        const clearLogHandBtn = document.getElementById('clear-log-hand-btn');
+        if (clearLogHandBtn) {
+            clearLogHandBtn.addEventListener('click', () => this.clearLogHand());
+        }
         
         // Enable chip buttons initially
         document.querySelectorAll('.chip').forEach(chip => {
@@ -1522,6 +1601,7 @@ class BlackjackGame {
                 this.updateGameState(result.game_state);
                 this.previousBalance = 1000; // Reset tracking for fresh start
                 this.lastInsuranceOutcomeSig = null;
+                this.insuranceAnnouncedForGameId = null;
                 this.updateButtonStates();
                 this.showMessage('Bankroll refreshed! Place your bet to start!');
                 this.log('Bankroll refreshed - new game with $1000', 'success');
@@ -1561,6 +1641,7 @@ class BlackjackGame {
                 this.gameId = result.game_id;
                 this.updateGameState(result.game_state);
                 this.previousBalance = bankrollAmount; // Reset tracking for fresh start
+                this.insuranceAnnouncedForGameId = null;
                 this.updateButtonStates();
                 this.showMessage(`Bankroll refreshed! Starting with $${bankrollAmount.toLocaleString()}. Place your bet to start!`);
                 this.log(`Bankroll refreshed - new game with $${bankrollAmount.toLocaleString()}`, 'success');
@@ -1698,6 +1779,7 @@ class BlackjackGame {
                     
                     if (result.success) {
                         this.gameId = result.game_id;
+                        this.insuranceAnnouncedForGameId = null;
                         this.updateGameState(result.game_state);
                         this.clearHands();
                         this.hideGameControls();
@@ -2338,6 +2420,14 @@ class BlackjackGame {
         this.updateInsuranceUI();
         this.updateAutoStatusUI();
         
+        // Show/hide Log Hand button based on game state
+        const logHandBtn = document.getElementById('log-hand-btn');
+        if (logHandBtn) {
+            // Show button whenever there's a completed round available to log
+            const hasCompletedRound = state.has_completed_round || false;
+            logHandBtn.style.display = hasCompletedRound ? 'inline-block' : 'none';
+        }
+        
         // Show insurance outcome if present
         const outcome = state.insurance_outcome;
         if (outcome) {
@@ -2386,6 +2476,12 @@ class BlackjackGame {
             btn.title = 'Insurance available';
             decline.style.display = 'inline-block';
             this.setActionStatus('insurance decision required');
+
+            const announcementKey = this.gameId ?? '__no_game__';
+            if (this.insuranceAnnouncedForGameId !== announcementKey) {
+                this.insuranceAnnouncedForGameId = announcementKey;
+                this.speakHecklerLine('Dealer is showing an ace, would you like insurance?', null);
+            }
         } else if (evenMoney) {
             const hands = this.gameState.player?.hands || [];
             const idx = this.gameState.player?.current_hand_index || 0;
@@ -2554,6 +2650,73 @@ class BlackjackGame {
         
         const url = `/api/auto_mode/download_log?game_id=${encodeURIComponent(this.gameState.game_id)}&filename=${encodeURIComponent(logFilename)}`;
         window.location.href = url;
+    }
+
+    async handleLogHand() {
+        if (!this.gameId) {
+            this.showMessage('No active game', 'error');
+            return;
+        }
+        
+        try {
+            this.showLoading();
+            const payload = {
+                game_id: this.gameId
+            };
+            const result = await this.apiCall('/api/log_hand', 'POST', payload);
+            
+            if (result.success) {
+                this.showMessage(result.message || 'Hand logged successfully', 'success');
+                this.updateGameState(result.game_state);
+            } else {
+                this.showMessage(result.error || result.message || 'Failed to log hand', 'error');
+            }
+        } catch (error) {
+            this.showMessage(error.message || 'Failed to log hand', 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    downloadLogHand() {
+        if (!this.gameId) {
+            this.showMessage('No active game', 'error');
+            return;
+        }
+        
+        const url = `/api/download_log_hand?game_id=${encodeURIComponent(this.gameId)}`;
+        window.location.href = url;
+    }
+
+    async clearLogHand() {
+        if (!this.gameId) {
+            this.showMessage('No active game', 'error');
+            return;
+        }
+        
+        // Show confirmation dialog
+        const confirmed = confirm('Are you sure you want to clear the LogHand.log file? This action cannot be undone.');
+        if (!confirmed) {
+            return;
+        }
+        
+        try {
+            this.showLoading();
+            const payload = {
+                game_id: this.gameId
+            };
+            const result = await this.apiCall('/api/clear_log_hand', 'POST', payload);
+            
+            if (result.success) {
+                this.showMessage(result.message || 'Log file cleared successfully', 'success');
+            } else {
+                this.showMessage(result.error || result.message || 'Failed to clear log file', 'error');
+            }
+        } catch (error) {
+            this.showMessage(error.message || 'Failed to clear log file', 'error');
+        } finally {
+            this.hideLoading();
+        }
     }
 
     /**

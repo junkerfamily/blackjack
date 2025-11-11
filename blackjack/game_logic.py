@@ -4,6 +4,7 @@ Game logic and state management for Blackjack game
 
 import uuid
 import os
+import copy
 import traceback
 from datetime import datetime
 from typing import Optional, Dict, Any
@@ -49,6 +50,119 @@ class BlackjackGame:
         self.auto_status: Optional[str] = None
         self.auto_mode_log_file: Optional[Any] = None  # File handle for auto mode logging
         self.auto_mode_log_filename: Optional[str] = None  # Log filename for download
+        # Round auditing
+        self.round_history: list = []
+        self.current_round_audit: Optional[Dict[str, Any]] = None
+        self.round_counter: int = 0
+
+    # ------------------------------------------------------------
+    # Round auditing helpers
+    # ------------------------------------------------------------
+    def _format_card(self, card: Card) -> str:
+        return f"{card.rank} of {card.suit}"
+
+    def _snapshot_hand(self, hand: Hand) -> Dict[str, Any]:
+        return {
+            'cards': [self._format_card(card) for card in hand.cards],
+            'value': hand.get_value(),
+            'bet': hand.bet,
+            'is_blackjack': hand.is_blackjack(),
+            'is_bust': hand.is_bust(),
+            'is_doubled_down': hand.is_doubled_down,
+            'is_split': hand.is_split,
+            'is_from_split_aces': hand.is_from_split_aces
+        }
+
+    def _start_round_audit(self, starting_balance: int, bet_amount: int):
+        self.round_counter += 1
+        self.current_round_audit = {
+            'round_id': self.round_counter,
+            'started_at': datetime.utcnow().isoformat(),
+            'starting_balance': starting_balance,
+            'bet_amount': bet_amount,
+            'player_initial_cards': [],
+            'dealer_initial_cards': [],
+            'dealer_visible_card': None,
+            'insurance_offered': False,
+            'even_money_offered': False,
+            'insurance_amount': 0,
+            'insurance_taken': False,
+            'insurance_declined': False,
+            'insurance_payout': 0,
+            'result': None,
+            'final_balance': None,
+            'dealer_final_hand': [],
+            'dealer_final_value': None,
+            'player_final_hands': [],
+            'events': []
+        }
+        self._record_round_event('bet_placed', {
+            'bet_amount': bet_amount,
+            'balance_before': starting_balance,
+            'balance_after': self.player.chips
+        })
+
+    def _update_audit(self, updates: Dict[str, Any]):
+        if not self.current_round_audit:
+            return
+        self.current_round_audit.update(updates)
+
+    def _record_round_event(self, event: str, details: Optional[Dict[str, Any]] = None):
+        if not self.current_round_audit:
+            return
+        self.current_round_audit.setdefault('events', []).append({
+            'timestamp': datetime.utcnow().isoformat(),
+            'event': event,
+            'details': details or {}
+        })
+
+    def _capture_initial_hands(self):
+        if not self.current_round_audit:
+            return
+        if not self.current_round_audit.get('player_initial_cards'):
+            current_hand = self.player.get_current_hand()
+            if current_hand:
+                self.current_round_audit['player_initial_cards'] = [
+                    self._format_card(card) for card in current_hand.cards
+                ]
+        if not self.current_round_audit.get('dealer_initial_cards'):
+            self.current_round_audit['dealer_initial_cards'] = [
+                self._format_card(card) for card in self.dealer.hand
+            ]
+            if len(self.dealer.hand) > 1:
+                self.current_round_audit['dealer_visible_card'] = self._format_card(self.dealer.hand[1])
+
+    def _finalize_round_audit(self):
+        if not self.current_round_audit or self.current_round_audit.get('finalized'):
+            return
+        self.current_round_audit['completed_at'] = datetime.utcnow().isoformat()
+        self.current_round_audit['result'] = self.result
+        self.current_round_audit['final_balance'] = self.player.chips
+        self.current_round_audit['dealer_final_hand'] = [
+            self._format_card(card) for card in self.dealer.hand
+        ]
+        self.current_round_audit['dealer_final_value'] = self.dealer.get_value()
+        self.current_round_audit['player_final_hands'] = [
+            self._snapshot_hand(hand) for hand in self.player.hands
+        ]
+        if self.insurance_outcome:
+            paid = bool(self.insurance_outcome.get('paid'))
+            amount = self.insurance_outcome.get('amount', 0)
+            self.current_round_audit['insurance_payout'] = amount if paid else 0
+            self.current_round_audit['insurance_paid'] = paid
+            self.current_round_audit['insurance_loss'] = 0 if paid else amount
+        self._record_round_event('round_completed', {
+            'result': self.result,
+            'final_balance': self.player.chips
+        })
+        self.current_round_audit['finalized'] = True
+        audit_copy = copy.deepcopy(self.current_round_audit)
+        self.round_history.append(audit_copy)
+        # Keep the most recent 50 rounds to avoid unbounded growth
+        if len(self.round_history) > 50:
+            self.round_history = self.round_history[-50:]
+        self.current_round_audit = None
+
         
     def new_game(self, preserve_auto: bool = False):
         """Start a new game round"""
@@ -105,8 +219,10 @@ class BlackjackGame:
         if self.player.chips < amount:
             return {'success': False, 'message': 'Insufficient Funds'}
         
+        starting_balance = self.player.chips
         success = self.player.place_bet(amount)
         if success:
+            self._start_round_audit(starting_balance, amount)
             return {'success': True, 'message': f'Bet of ${amount} placed'}
         else:
             return {'success': False, 'message': 'Failed to place bet'}
@@ -160,13 +276,32 @@ class BlackjackGame:
                 if current_hand and current_hand.is_blackjack():
                     # Even money (authentic rule) – but this branch won't occur because we handled blackjack above
                     self.even_money_offer_active = True
+                    self._update_audit({'even_money_offered': True})
+                    self._record_round_event('even_money_offered', {
+                        'bet_amount': current_hand.bet if current_hand else 0
+                    })
                 else:
                     # Insurance: 50% of bet (rounded down)
                     self.insurance_offer_active = True
                     self.insurance_for_hand_index = self.player.current_hand_index
                     bet = current_hand.bet if current_hand else 0
                     self.insurance_amount = int(bet * 0.5)
+                    self._update_audit({
+                        'insurance_offered': True,
+                        'insurance_amount': self.insurance_amount
+                    })
+                    self._record_round_event('insurance_offered', {
+                        'insurance_amount': self.insurance_amount,
+                        'hand_index': self.player.current_hand_index
+                    })
         
+        self._capture_initial_hands()
+        self._record_round_event('initial_deal', {
+            'player_cards': self.current_round_audit.get('player_initial_cards') if self.current_round_audit else [],
+            'dealer_cards': self.current_round_audit.get('dealer_initial_cards') if self.current_round_audit else []
+        })
+        if self.state == GameState.GAME_OVER:
+            self._finalize_round_audit()
         return {'success': True, 'message': 'Cards dealt'}
     
     def hit(self) -> Dict[str, Any]:
@@ -197,11 +332,20 @@ class BlackjackGame:
             return {'success': False, 'message': 'No more cards in deck'}
         
         current_hand.add_card(card)
+        self._record_round_event('player_hit', {
+            'card': self._format_card(card),
+            'hand_value': current_hand.get_value(),
+            'hand_index': self.player.current_hand_index
+        })
         
         # Check for 5 Card Charlie (5 cards without busting = automatic win)
         if len(current_hand.cards) == 5 and not current_hand.is_bust():
             current_hand_index = self.player.current_hand_index
             self.player.win(current_hand_index)
+            self._record_round_event('five_card_charlie', {
+                'hand_index': current_hand_index,
+                'hand_value': current_hand.get_value()
+            })
             
             # Move to next hand or finish game
             if self._move_to_next_hand():
@@ -211,11 +355,16 @@ class BlackjackGame:
                 self.dealer.reveal_hole_card()
                 self.state = GameState.GAME_OVER
                 self.result = "win"
+                self._finalize_round_audit()
                 return {'success': True, 'message': '5 Card Charlie! You win!', 'charlie': True, 'game_over': True}
         
         # Check if bust
         if current_hand.is_bust():
             # Move to next hand or dealer turn
+            self._record_round_event('player_bust', {
+                'hand_index': self.player.current_hand_index,
+                'hand_value': current_hand.get_value()
+            })
             if self._move_to_next_hand():
                 return {'success': True, 'message': 'Bust! Next hand', 'bust': True}
             else:
@@ -238,6 +387,9 @@ class BlackjackGame:
         if self.insurance_offer_active or self.even_money_offer_active:
             return {'success': False, 'message': 'Insurance decision required'}
         
+        self._record_round_event('player_stand', {
+            'hand_index': self.player.current_hand_index
+        })
         # Move to next hand or dealer turn
         if self._move_to_next_hand():
             return {'success': True, 'message': 'Standing. Next hand'}
@@ -274,6 +426,11 @@ class BlackjackGame:
         # Double the bet
         current_hand.double_down()
         self.player.chips -= current_hand.bet // 2  # Already deducted original bet
+        self._record_round_event('double_down', {
+            'hand_index': self.player.current_hand_index,
+            'bet_after_double': current_hand.bet,
+            'chips_remaining': self.player.chips
+        })
         
         # Deal one card
         card = self.deck.deal_card()
@@ -281,6 +438,10 @@ class BlackjackGame:
             return {'success': False, 'message': 'No more cards in deck'}
         
         current_hand.add_card(card)
+        self._record_round_event('double_down_card', {
+            'card': self._format_card(card),
+            'hand_value': current_hand.get_value()
+        })
         
         # Check if bust
         if current_hand.is_bust():
@@ -356,11 +517,16 @@ class BlackjackGame:
     
     def _move_to_next_hand(self) -> bool:
         """Move to next hand if available, return True if moved, False if done"""
+        previous_index = self.player.current_hand_index
         self.player.current_hand_index += 1
         if self.player.current_hand_index >= len(self.player.hands):
             # All hands done - dealer will play but don't determine results here
             # Results will be determined by the caller (stand/hit/double_down)
             return False
+        self._record_round_event('advance_to_next_hand', {
+            'from_hand': previous_index,
+            'to_hand': self.player.current_hand_index
+        })
         return True
     
     def _determine_results(self):
@@ -483,6 +649,7 @@ class BlackjackGame:
         import sys
         sys.stdout.flush()
         self.state = GameState.GAME_OVER
+        self._finalize_round_audit()
     
     def _finish_game(self):
         """Finish the game when player busts on all hands"""
@@ -492,6 +659,7 @@ class BlackjackGame:
         self.result = "loss"
         print(f"✅ Game finished: result={self.result}, player chips: ${self.player.chips}")
         # Already lost on bust hands, no need to determine results
+        self._finalize_round_audit()
     
     def get_game_state(self) -> Dict[str, Any]:
         """Get the current game state for API responses"""
@@ -507,6 +675,7 @@ class BlackjackGame:
             'even_money_offer_active': self.even_money_offer_active,
             'insurance_outcome': self.insurance_outcome,
             'split_summary': getattr(self, 'split_summary', None),
+            'has_completed_round': len(self.round_history) > 0,
             'auto_mode': {
                 'active': self.auto_mode_active,
                 'hands_remaining': self.auto_hands_remaining,
@@ -539,9 +708,20 @@ class BlackjackGame:
                 self.insurance_offer_active = False
                 self.insurance_taken = False
                 self.state = GameState.GAME_OVER
+                self._record_round_event('even_money_taken', {
+                    'payout': payout,
+                    'hand_index': self.player.current_hand_index
+                })
+                self._update_audit({
+                    'even_money_taken': True,
+                    'even_money_payout': payout
+                })
+                self._finalize_round_audit()
                 return {'success': True, 'message': 'Even money paid', 'game_over': True}
             elif decision == 'decline':
                 self.even_money_offer_active = False
+                self._record_round_event('even_money_declined', {})
+                self._update_audit({'even_money_taken': False})
                 return {'success': True, 'message': 'Even money declined'}
             else:
                 return {'success': False, 'message': 'Invalid decision'}
@@ -554,10 +734,22 @@ class BlackjackGame:
                 self.player.chips -= self.insurance_amount
                 self.insurance_taken = True
                 self.insurance_offer_active = False
+                self._record_round_event('insurance_bought', {
+                    'insurance_amount': self.insurance_amount
+                })
+                self._update_audit({
+                    'insurance_taken': True,
+                    'insurance_declined': False
+                })
                 return {'success': True, 'message': 'Insurance purchased'}
             elif decision == 'decline':
                 self.insurance_offer_active = False
                 self.insurance_taken = False
+                self._record_round_event('insurance_declined', {})
+                self._update_audit({
+                    'insurance_taken': False,
+                    'insurance_declined': True
+                })
                 return {'success': True, 'message': 'Insurance declined'}
             else:
                 return {'success': False, 'message': 'Invalid decision'}
@@ -661,6 +853,130 @@ class BlackjackGame:
         
         # Log bankroll after round
         self._log_auto_event(f"Bankroll after round: ${self.player.chips}")
+
+    def log_hand(self) -> Dict[str, Any]:
+        """
+        Log the current round's hand data to LogHand.log file.
+        Only logs if there's a finalized round audit available.
+        
+        Returns:
+            Dict with success status and message
+        """
+        try:
+            # Get the most recent finalized round audit
+            if not self.round_history:
+                return {'success': False, 'message': 'No completed round to log'}
+            
+            # Get the most recent round audit
+            round_audit = self.round_history[-1]
+            
+            # Get the project root directory
+            current_file = os.path.abspath(__file__)
+            blackjack_dir = os.path.dirname(current_file)
+            project_root = os.path.dirname(blackjack_dir)
+            
+            # Fallback to current working directory if path resolution fails
+            if not os.path.exists(project_root):
+                project_root = os.getcwd()
+            
+            # Log file path
+            log_path = os.path.join(project_root, 'LogHand.log')
+            
+            # Write to log file (append mode)
+            with open(log_path, 'a', encoding='utf-8') as log_file:
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                log_file.write(f"\n{'='*80}\n")
+                log_file.write(f"Hand Logged: {timestamp}\n")
+                log_file.write(f"{'='*80}\n")
+                
+                # Round ID
+                log_file.write(f"Round ID: {round_audit.get('round_id', 'N/A')}\n")
+                
+                # Beginning balance
+                log_file.write(f"Beginning Balance: ${round_audit.get('starting_balance', 0)}\n")
+                
+                # Bet amount
+                log_file.write(f"Bet Amount: ${round_audit.get('bet_amount', 0)}\n")
+                
+                # Initial cards dealt
+                log_file.write(f"\nInitial Cards Dealt:\n")
+                log_file.write(f"  Player: {', '.join(round_audit.get('player_initial_cards', []))}\n")
+                dealer_initial = round_audit.get('dealer_initial_cards', [])
+                if dealer_initial:
+                    log_file.write(f"  Dealer: {dealer_initial[0]} (hole card hidden), {dealer_initial[1] if len(dealer_initial) > 1 else 'N/A'}\n")
+                
+                # Insurance information
+                insurance_offered = round_audit.get('insurance_offered', False)
+                even_money_offered = round_audit.get('even_money_offered', False)
+                if insurance_offered or even_money_offered:
+                    log_file.write(f"\nInsurance:\n")
+                    if even_money_offered:
+                        log_file.write(f"  Even Money Offered: Yes\n")
+                        log_file.write(f"  Even Money Taken: {'Yes' if round_audit.get('even_money_taken', False) else 'No'}\n")
+                        if round_audit.get('even_money_taken', False):
+                            log_file.write(f"  Even Money Payout: ${round_audit.get('even_money_payout', 0)}\n")
+                    else:
+                        log_file.write(f"  Insurance Offered: Yes\n")
+                        log_file.write(f"  Insurance Amount: ${round_audit.get('insurance_amount', 0)}\n")
+                        log_file.write(f"  Insurance Taken: {'Yes' if round_audit.get('insurance_taken', False) else 'No'}\n")
+                        if round_audit.get('insurance_taken', False):
+                            insurance_paid = round_audit.get('insurance_paid', False)
+                            if insurance_paid:
+                                log_file.write(f"  Insurance Payout: ${round_audit.get('insurance_payout', 0)}\n")
+                            else:
+                                log_file.write(f"  Insurance Lost: ${round_audit.get('insurance_loss', 0)}\n")
+                else:
+                    log_file.write(f"\nInsurance: Not Offered\n")
+                
+                # Hit cards (extract from events)
+                hit_cards = []
+                for event in round_audit.get('events', []):
+                    if event.get('event') == 'player_hit':
+                        card = event.get('details', {}).get('card')
+                        if card:
+                            hit_cards.append(card)
+                    elif event.get('event') == 'double_down_card':
+                        card = event.get('details', {}).get('card')
+                        if card:
+                            hit_cards.append(f"{card} (double down)")
+                
+                if hit_cards:
+                    log_file.write(f"\nHit Cards:\n")
+                    for i, card in enumerate(hit_cards, 1):
+                        log_file.write(f"  Hit {i}: {card}\n")
+                else:
+                    log_file.write(f"\nHit Cards: None\n")
+                
+                # Final hands
+                log_file.write(f"\nFinal Hands:\n")
+                player_final_hands = round_audit.get('player_final_hands', [])
+                if player_final_hands:
+                    for idx, hand in enumerate(player_final_hands):
+                        hand_label = f"Hand {idx + 1}" if len(player_final_hands) > 1 else "Hand"
+                        cards = ', '.join(hand.get('cards', []))
+                        value = hand.get('value', 0)
+                        bet = hand.get('bet', 0)
+                        log_file.write(f"  {hand_label}: {cards} (Value: {value}, Bet: ${bet})\n")
+                
+                dealer_final_hand = round_audit.get('dealer_final_hand', [])
+                dealer_final_value = round_audit.get('dealer_final_value', 0)
+                if dealer_final_hand:
+                    log_file.write(f"  Dealer: {', '.join(dealer_final_hand)} (Value: {dealer_final_value})\n")
+                
+                # Result
+                log_file.write(f"\nResult: {round_audit.get('result', 'N/A').upper()}\n")
+                
+                # Final balance
+                log_file.write(f"Final Balance: ${round_audit.get('final_balance', 0)}\n")
+                
+                log_file.write(f"{'='*80}\n\n")
+            
+            return {'success': True, 'message': 'Hand logged successfully'}
+        except Exception as e:
+            error_msg = f"Failed to log hand: {str(e)}"
+            print(f"⚠️ {error_msg}")
+            traceback.print_exc()
+            return {'success': False, 'message': error_msg}
 
     def start_auto_mode(self, default_bet: int, hands: int, insurance_mode: str) -> Dict[str, Any]:
         if self.auto_mode_active:
