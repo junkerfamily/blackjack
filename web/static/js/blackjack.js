@@ -60,6 +60,7 @@ class BlackjackGame {
         // Dedupe key for insurance outcome history entries per round
         this.lastInsuranceOutcomeSig = null;
         this.insuranceAnnouncedForGameId = null;
+        this.loggedRoundId = null; // Track which round has been logged
         if (this.hecklerPreferences?.rate && !Number.isNaN(parseFloat(this.hecklerPreferences.rate))) {
             this.hecklerSpeechRate = parseFloat(this.hecklerPreferences.rate);
         }
@@ -1549,6 +1550,23 @@ class BlackjackGame {
     }
 
     /**
+     * Show message with multiple colored parts
+     * @param {string} text1 - First part of message
+     * @param {string} color1 - Color for first part
+     * @param {string} text2 - Second part of message
+     * @param {string} color2 - Color for second part
+     */
+    showMessageWithColors(text1, color1, text2, color2) {
+        const messageElement = document.getElementById('game-message');
+        if (messageElement) {
+            messageElement.innerHTML = `<span style="color: ${color1}">${text1}</span><span style="color: ${color2}">${text2}</span>`;
+            messageElement.className = 'game-message';
+            // Reset inline color style since we're using spans
+            messageElement.style.color = '';
+        }
+    }
+
+    /**
      * Show blackjack celebration animation
      * @returns {Promise} Resolves when animation completes
      */
@@ -1598,6 +1616,7 @@ class BlackjackGame {
             
             if (result.success) {
                 this.gameId = result.game_id;
+                this.loggedRoundId = null; // Reset logged round when starting new game
                 this.updateGameState(result.game_state);
                 this.previousBalance = 1000; // Reset tracking for fresh start
                 this.lastInsuranceOutcomeSig = null;
@@ -1780,6 +1799,7 @@ class BlackjackGame {
                     if (result.success) {
                         this.gameId = result.game_id;
                         this.insuranceAnnouncedForGameId = null;
+                        this.loggedRoundId = null; // Reset logged round when starting new round
                         this.updateGameState(result.game_state);
                         this.clearHands();
                         this.hideGameControls();
@@ -2299,30 +2319,68 @@ class BlackjackGame {
             this.log(`Player ${playerValue} == Dealer ${dealerValue} - PUSH`, 'action');
         }
         
-        if (result === 'win') {
-            this.log('ROUND WINNER: PLAYER WINS!', 'win');
-            this.showMessage('You Win! 🎉', 'win');
-        } else if (result === 'blackjack') {
-            this.log('ROUND WINNER: PLAYER WINS WITH BLACKJACK!', 'win');
-            await this.showBlackjackCelebration();
-            this.showMessage('Blackjack! You Win! 🎉', 'win');
-        } else if (result === 'loss') {
-            this.log('ROUND WINNER: DEALER WINS (Player loses)', 'bust');
-            this.showMessage('You Lose', 'error');
-        } else if (result === 'push') {
-            this.log('ROUND RESULT: PUSH (Tie)', 'action');
-            this.showMessage('Push - It\'s a tie!', 'info');
-        } else {
-            this.log(`ROUND ENDED: Unknown result "${result}"`, 'warn');
-            this.showMessage('Game Over', 'info');
-        }
-        
         const balance = this.gameState?.player?.chips || 0;
         const betAmount = this.currentBet || 0;
         
         // IMPORTANT: previousBalance should be the balance AFTER the bet was placed
         // because the bet is deducted when placed, not when the game ends
         const balanceAfterBet = this.previousBalance || 1000;
+        
+        // Calculate actual balance change (handles single hands, splits, blackjack, insurance)
+        const balanceChange = balance - balanceAfterBet;
+        const formattedAmount = Math.abs(balanceChange).toLocaleString();
+        
+        if (result === 'win') {
+            this.log('ROUND WINNER: PLAYER WINS!', 'win');
+            const message = balanceChange > 0 ? `You Win! +$${formattedAmount} 🎉` : 'You Win! 🎉';
+            this.showMessage(message, 'win');
+        } else if (result === 'blackjack') {
+            this.log('ROUND WINNER: PLAYER WINS WITH BLACKJACK!', 'win');
+            await this.showBlackjackCelebration();
+            // For blackjack, always show the amount won (3:2 payout = 1.5x bet profit)
+            // Calculate profit from bet amount if balanceChange isn't available
+            let blackjackProfit = balanceChange;
+            if (blackjackProfit <= 0) {
+                // Fallback: calculate expected profit (1.5x bet)
+                const handsArray = this.gameState?.player?.hands || [];
+                let totalBet = 0;
+                if (handsArray.length > 0) {
+                    totalBet = handsArray.reduce((sum, hand) => sum + (hand.bet || 0), 0);
+                } else {
+                    totalBet = betAmount;
+                }
+                blackjackProfit = Math.floor(totalBet * 1.5);
+            }
+            const formattedBlackjackProfit = Math.abs(blackjackProfit).toLocaleString();
+            this.showMessage(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉`, 'win');
+        } else if (result === 'loss') {
+            this.log('ROUND WINNER: DEALER WINS (Player loses)', 'bust');
+            // Calculate total bet lost (for splits, sum all bets)
+            const handsArray = this.gameState?.player?.hands || [];
+            let totalBetLost = 0;
+            if (handsArray.length > 0) {
+                totalBetLost = handsArray.reduce((sum, hand) => sum + (hand.bet || 0), 0);
+            } else {
+                totalBetLost = betAmount;
+            }
+            const formattedLoss = totalBetLost.toLocaleString();
+            
+            // Check if insurance was paid
+            const insuranceOutcome = this.gameState?.insurance_outcome;
+            if (insuranceOutcome && insuranceOutcome.paid === true && insuranceOutcome.amount > 0) {
+                const formattedInsurance = insuranceOutcome.amount.toLocaleString();
+                // Show loss in red and insurance payout in green
+                this.showMessageWithColors(`Lost $${formattedLoss}, `, '#dc3545', `Ins Paid: $${formattedInsurance}`, '#28a745');
+            } else {
+                this.showMessage(`You Lose -$${formattedLoss}`, 'error');
+            }
+        } else if (result === 'push') {
+            this.log('ROUND RESULT: PUSH (Tie)', 'action');
+            this.showMessage('Push - It\'s a tie! $0', 'info');
+        } else {
+            this.log(`ROUND ENDED: Unknown result "${result}"`, 'warn');
+            this.showMessage('Game Over', 'info');
+        }
         
         // Calculate expected balance change based on result
         let expectedBalanceChange = 0;
@@ -2425,7 +2483,20 @@ class BlackjackGame {
         if (logHandBtn) {
             // Show button whenever there's a completed round available to log
             const hasCompletedRound = state.has_completed_round || false;
-            logHandBtn.style.display = hasCompletedRound ? 'inline-block' : 'none';
+            const latestRoundId = state.latest_round_id || null;
+            
+            // Show button only if there's a completed round that hasn't been logged yet
+            const shouldShow = hasCompletedRound && latestRoundId !== null && latestRoundId !== this.loggedRoundId;
+            
+            if (shouldShow) {
+                // New round available to log - show and enable the button
+                logHandBtn.style.display = 'inline-block';
+                logHandBtn.disabled = false;
+            } else {
+                // Round already logged or no completed round - hide the button
+                logHandBtn.style.display = 'none';
+                logHandBtn.disabled = false; // Reset disabled state for next round
+            }
         }
         
         // Show insurance outcome if present
@@ -2658,6 +2729,19 @@ class BlackjackGame {
             return;
         }
         
+        // Get current round_id before logging
+        const currentRoundId = this.gameState?.latest_round_id;
+        if (!currentRoundId) {
+            this.showMessage('No completed round to log', 'error');
+            return;
+        }
+        
+        // Check if this round has already been logged
+        if (this.loggedRoundId === currentRoundId) {
+            this.showMessage('This hand has already been logged', 'warn');
+            return;
+        }
+        
         try {
             this.showLoading();
             const payload = {
@@ -2666,6 +2750,13 @@ class BlackjackGame {
             const result = await this.apiCall('/api/log_hand', 'POST', payload);
             
             if (result.success) {
+                // Mark this round as logged and hide the button
+                this.loggedRoundId = currentRoundId;
+                const logHandBtn = document.getElementById('log-hand-btn');
+                if (logHandBtn) {
+                    logHandBtn.style.display = 'none';
+                    logHandBtn.disabled = false; // Reset for next round
+                }
                 this.showMessage(result.message || 'Hand logged successfully', 'success');
                 this.updateGameState(result.game_state);
             } else {

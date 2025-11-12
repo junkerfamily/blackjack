@@ -663,6 +663,11 @@ class BlackjackGame:
     
     def get_game_state(self) -> Dict[str, Any]:
         """Get the current game state for API responses"""
+        # Get the latest round_id if there's a completed round
+        latest_round_id = None
+        if self.round_history:
+            latest_round_id = self.round_history[-1].get('round_id')
+        
         return {
             'game_id': self.game_id,
             'state': self.state,
@@ -676,6 +681,7 @@ class BlackjackGame:
             'insurance_outcome': self.insurance_outcome,
             'split_summary': getattr(self, 'split_summary', None),
             'has_completed_round': len(self.round_history) > 0,
+            'latest_round_id': latest_round_id,
             'auto_mode': {
                 'active': self.auto_mode_active,
                 'hands_remaining': self.auto_hands_remaining,
@@ -882,94 +888,107 @@ class BlackjackGame:
             # Log file path
             log_path = os.path.join(project_root, 'LogHand.log')
             
-            # Write to log file (append mode)
-            with open(log_path, 'a', encoding='utf-8') as log_file:
-                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                log_file.write(f"\n{'='*80}\n")
-                log_file.write(f"Hand Logged: {timestamp}\n")
-                log_file.write(f"{'='*80}\n")
-                
-                # Round ID
-                log_file.write(f"Round ID: {round_audit.get('round_id', 'N/A')}\n")
-                
-                # Beginning balance
-                log_file.write(f"Beginning Balance: ${round_audit.get('starting_balance', 0)}\n")
-                
-                # Bet amount
-                log_file.write(f"Bet Amount: ${round_audit.get('bet_amount', 0)}\n")
-                
-                # Initial cards dealt
-                log_file.write(f"\nInitial Cards Dealt:\n")
-                log_file.write(f"  Player: {', '.join(round_audit.get('player_initial_cards', []))}\n")
-                dealer_initial = round_audit.get('dealer_initial_cards', [])
-                if dealer_initial:
-                    log_file.write(f"  Dealer: {dealer_initial[0]} (hole card hidden), {dealer_initial[1] if len(dealer_initial) > 1 else 'N/A'}\n")
-                
-                # Insurance information
-                insurance_offered = round_audit.get('insurance_offered', False)
-                even_money_offered = round_audit.get('even_money_offered', False)
-                if insurance_offered or even_money_offered:
-                    log_file.write(f"\nInsurance:\n")
-                    if even_money_offered:
-                        log_file.write(f"  Even Money Offered: Yes\n")
-                        log_file.write(f"  Even Money Taken: {'Yes' if round_audit.get('even_money_taken', False) else 'No'}\n")
-                        if round_audit.get('even_money_taken', False):
-                            log_file.write(f"  Even Money Payout: ${round_audit.get('even_money_payout', 0)}\n")
-                    else:
-                        log_file.write(f"  Insurance Offered: Yes\n")
-                        log_file.write(f"  Insurance Amount: ${round_audit.get('insurance_amount', 0)}\n")
-                        log_file.write(f"  Insurance Taken: {'Yes' if round_audit.get('insurance_taken', False) else 'No'}\n")
-                        if round_audit.get('insurance_taken', False):
-                            insurance_paid = round_audit.get('insurance_paid', False)
-                            if insurance_paid:
-                                log_file.write(f"  Insurance Payout: ${round_audit.get('insurance_payout', 0)}\n")
-                            else:
-                                log_file.write(f"  Insurance Lost: ${round_audit.get('insurance_loss', 0)}\n")
+            # Build the new log entry
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            new_entry_lines = []
+            new_entry_lines.append(f"{'='*80}\n")
+            new_entry_lines.append(f"Hand Logged: {timestamp}\n")
+            new_entry_lines.append(f"{'='*80}\n")
+            
+            # Round ID
+            new_entry_lines.append(f"Round ID: {round_audit.get('round_id', 'N/A')}\n")
+            
+            # Beginning balance
+            new_entry_lines.append(f"Beginning Balance: ${round_audit.get('starting_balance', 0)}\n")
+            
+            # Bet amount
+            new_entry_lines.append(f"Bet Amount: ${round_audit.get('bet_amount', 0)}\n")
+            
+            # Initial cards dealt
+            new_entry_lines.append(f"\nInitial Cards Dealt:\n")
+            new_entry_lines.append(f"  Player: {', '.join(round_audit.get('player_initial_cards', []))}\n")
+            dealer_initial = round_audit.get('dealer_initial_cards', [])
+            if dealer_initial:
+                new_entry_lines.append(f"  Dealer: {dealer_initial[0]} (hole card hidden), {dealer_initial[1] if len(dealer_initial) > 1 else 'N/A'}\n")
+            
+            # Insurance information
+            insurance_offered = round_audit.get('insurance_offered', False)
+            even_money_offered = round_audit.get('even_money_offered', False)
+            if insurance_offered or even_money_offered:
+                new_entry_lines.append(f"\nInsurance:\n")
+                if even_money_offered:
+                    new_entry_lines.append(f"  Even Money Offered: Yes\n")
+                    new_entry_lines.append(f"  Even Money Taken: {'Yes' if round_audit.get('even_money_taken', False) else 'No'}\n")
+                    if round_audit.get('even_money_taken', False):
+                        new_entry_lines.append(f"  Even Money Payout: ${round_audit.get('even_money_payout', 0)}\n")
                 else:
-                    log_file.write(f"\nInsurance: Not Offered\n")
-                
-                # Hit cards (extract from events)
-                hit_cards = []
-                for event in round_audit.get('events', []):
-                    if event.get('event') == 'player_hit':
-                        card = event.get('details', {}).get('card')
-                        if card:
-                            hit_cards.append(card)
-                    elif event.get('event') == 'double_down_card':
-                        card = event.get('details', {}).get('card')
-                        if card:
-                            hit_cards.append(f"{card} (double down)")
-                
-                if hit_cards:
-                    log_file.write(f"\nHit Cards:\n")
-                    for i, card in enumerate(hit_cards, 1):
-                        log_file.write(f"  Hit {i}: {card}\n")
-                else:
-                    log_file.write(f"\nHit Cards: None\n")
-                
-                # Final hands
-                log_file.write(f"\nFinal Hands:\n")
-                player_final_hands = round_audit.get('player_final_hands', [])
-                if player_final_hands:
-                    for idx, hand in enumerate(player_final_hands):
-                        hand_label = f"Hand {idx + 1}" if len(player_final_hands) > 1 else "Hand"
-                        cards = ', '.join(hand.get('cards', []))
-                        value = hand.get('value', 0)
-                        bet = hand.get('bet', 0)
-                        log_file.write(f"  {hand_label}: {cards} (Value: {value}, Bet: ${bet})\n")
-                
-                dealer_final_hand = round_audit.get('dealer_final_hand', [])
-                dealer_final_value = round_audit.get('dealer_final_value', 0)
-                if dealer_final_hand:
-                    log_file.write(f"  Dealer: {', '.join(dealer_final_hand)} (Value: {dealer_final_value})\n")
-                
-                # Result
-                log_file.write(f"\nResult: {round_audit.get('result', 'N/A').upper()}\n")
-                
-                # Final balance
-                log_file.write(f"Final Balance: ${round_audit.get('final_balance', 0)}\n")
-                
-                log_file.write(f"{'='*80}\n\n")
+                    new_entry_lines.append(f"  Insurance Offered: Yes\n")
+                    new_entry_lines.append(f"  Insurance Amount: ${round_audit.get('insurance_amount', 0)}\n")
+                    new_entry_lines.append(f"  Insurance Taken: {'Yes' if round_audit.get('insurance_taken', False) else 'No'}\n")
+                    if round_audit.get('insurance_taken', False):
+                        insurance_paid = round_audit.get('insurance_paid', False)
+                        if insurance_paid:
+                            new_entry_lines.append(f"  Insurance Payout: ${round_audit.get('insurance_payout', 0)}\n")
+                        else:
+                            new_entry_lines.append(f"  Insurance Lost: ${round_audit.get('insurance_loss', 0)}\n")
+            else:
+                new_entry_lines.append(f"\nInsurance: Not Offered\n")
+            
+            # Hit cards (extract from events)
+            hit_cards = []
+            for event in round_audit.get('events', []):
+                if event.get('event') == 'player_hit':
+                    card = event.get('details', {}).get('card')
+                    if card:
+                        hit_cards.append(card)
+                elif event.get('event') == 'double_down_card':
+                    card = event.get('details', {}).get('card')
+                    if card:
+                        hit_cards.append(f"{card} (double down)")
+            
+            if hit_cards:
+                new_entry_lines.append(f"\nHit Cards:\n")
+                for i, card in enumerate(hit_cards, 1):
+                    new_entry_lines.append(f"  Hit {i}: {card}\n")
+            else:
+                new_entry_lines.append(f"\nHit Cards: None\n")
+            
+            # Final hands
+            new_entry_lines.append(f"\nFinal Hands:\n")
+            player_final_hands = round_audit.get('player_final_hands', [])
+            if player_final_hands:
+                for idx, hand in enumerate(player_final_hands):
+                    hand_label = f"Hand {idx + 1}" if len(player_final_hands) > 1 else "Hand"
+                    cards = ', '.join(hand.get('cards', []))
+                    value = hand.get('value', 0)
+                    bet = hand.get('bet', 0)
+                    new_entry_lines.append(f"  {hand_label}: {cards} (Value: {value}, Bet: ${bet})\n")
+            
+            dealer_final_hand = round_audit.get('dealer_final_hand', [])
+            dealer_final_value = round_audit.get('dealer_final_value', 0)
+            if dealer_final_hand:
+                new_entry_lines.append(f"  Dealer: {', '.join(dealer_final_hand)} (Value: {dealer_final_value})\n")
+            
+            # Result
+            new_entry_lines.append(f"\nResult: {round_audit.get('result', 'N/A').upper()}\n")
+            
+            # Final balance
+            new_entry_lines.append(f"Final Balance: ${round_audit.get('final_balance', 0)}\n")
+            
+            new_entry_lines.append(f"{'='*80}\n\n")
+            
+            # Read existing file content (if it exists)
+            existing_content = ''
+            if os.path.exists(log_path):
+                with open(log_path, 'r', encoding='utf-8') as log_file:
+                    existing_content = log_file.read()
+            
+            # Write new entry first, then existing content (prepend mode)
+            new_entry = ''.join(new_entry_lines)
+            with open(log_path, 'w', encoding='utf-8') as log_file:
+                log_file.write(new_entry)
+                if existing_content:
+                    log_file.write(existing_content)
             
             return {'success': True, 'message': 'Hand logged successfully'}
         except Exception as e:
