@@ -1312,6 +1312,7 @@ class BlackjackGame {
         console.log('%c⌨️ KEYBOARD HOTKEYS AVAILABLE', 'color: #FFD700; font-size: 14px; font-weight: bold');
         console.log('%cH%c = Hit', 'color: #FFD700; font-weight: bold', 'color: #fff');
         console.log('%cS%c = Stand', 'color: #FFD700; font-weight: bold', 'color: #fff');
+        console.log('%cR%c = Surrender', 'color: #FFD700; font-weight: bold', 'color: #fff');
         console.log('%cD%c = Deal Cards', 'color: #FFD700; font-weight: bold', 'color: #fff');
         console.log('%c1%c = Bet $100', 'color: #FFD700; font-weight: bold', 'color: #fff');
         console.log('%c5%c = Bet $500', 'color: #FFD700; font-weight: bold', 'color: #fff');
@@ -1332,6 +1333,10 @@ class BlackjackGame {
                 case 's':
                     this.log('⌨️ Hotkey: Stand (S)', 'action');
                     this.playerStand();
+                    break;
+                case 'r':
+                    this.log('⌨️ Hotkey: Surrender (R)', 'action');
+                    this.playerSurrender();
                     break;
                 case 'd':
                     this.log('⌨️ Hotkey: Deal Cards (D)', 'action');
@@ -1456,7 +1461,7 @@ class BlackjackGame {
      */
     setButtonsEnabled(enabled) {
         // Only disable game action buttons, NOT betting chips
-        const actionButtons = ['hit-btn', 'stand-btn', 'double-btn', 'split-btn', 'deal-btn'];
+        const actionButtons = ['hit-btn', 'stand-btn', 'double-btn', 'split-btn', 'surrender-btn', 'deal-btn'];
         actionButtons.forEach(btnId => {
             const btn = document.getElementById(btnId);
             if (btn) {
@@ -2123,6 +2128,61 @@ class BlackjackGame {
     }
 
     /**
+     * Player surrenders hand
+     */
+    async playerSurrender() {
+        if (!this.gameId) {
+            this.log('SURRENDER DENIED: No gameId', 'warn');
+            return;
+        }
+        
+        if (this.isProcessing) {
+            this.log('SURRENDER DENIED: Already processing another action', 'warn');
+            return;
+        }
+        
+        const playerHand = this.gameState?.player?.hands?.[this.gameState.player.current_hand_index];
+        const betAmount = playerHand?.bet || 0;
+        this.log(`Player SURRENDERS hand with bet: $${betAmount}`, 'action');
+        this.setActionStatus('surrendering');
+        
+        try {
+            this.showLoading();
+            const result = await this.apiCall('/api/surrender', 'POST', {
+                game_id: this.gameId
+            });
+            
+            if (result.success) {
+                this.log('Surrender API call successful', 'success');
+                this.updateGameState(result.game_state);
+                this.updateButtonStates();
+                
+                this.log(`After surrender - State: ${this.gameState.state}, Result: ${this.gameState.result}`, 'action');
+                
+                if (result.game_over) {
+                    // If game is over, finalize immediately
+                    await this.endGame();
+                } else {
+                    // If there are more hands, continue playing
+                    this.log('More hands to play after surrender', 'action');
+                }
+                
+                if (result.message) {
+                    this.showMessage(result.message, 'success');
+                }
+            } else {
+                this.log(`Surrender failed: ${result.error || result.message}`, 'error');
+                this.showMessage(result.error || result.message || 'Surrender failed', 'error');
+            }
+        } catch (error) {
+            this.log(`Surrender error: ${error.message}`, 'error');
+            this.showMessage(`Error: ${error.message}`, 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    /**
      * Player doubles down
      */
     async playerDoubleDown() {
@@ -2332,27 +2392,60 @@ class BlackjackGame {
         
         if (result === 'win') {
             this.log('ROUND WINNER: PLAYER WINS!', 'win');
-            const message = balanceChange > 0 ? `You Win! +$${formattedAmount} 🎉` : 'You Win! 🎉';
-            this.showMessage(message, 'win');
+            
+            // Check insurance outcome
+            const insuranceOutcome = this.gameState?.insurance_outcome;
+            if (insuranceOutcome && insuranceOutcome.amount > 0) {
+                if (insuranceOutcome.paid === false) {
+                    // Player won but insurance was lost (dealer didn't have blackjack)
+                    const formattedInsuranceLoss = insuranceOutcome.amount.toLocaleString();
+                    const winMessage = balanceChange > 0 ? `You Win! +$${formattedAmount}` : 'You Win!';
+                    // Show win in green and insurance loss in red
+                    this.showMessageWithColors(`${winMessage} 🎉, `, '#28a745', `Ins Lost: $${formattedInsuranceLoss}`, '#dc3545');
+                } else {
+                    // Insurance was paid (shouldn't happen on a win, but handle it)
+                    const formattedInsurance = insuranceOutcome.amount.toLocaleString();
+                    const winMessage = balanceChange > 0 ? `You Win! +$${formattedAmount}` : 'You Win!';
+                    // Show both in green
+                    this.showMessageWithColors(`${winMessage} 🎉, `, '#28a745', `Ins Paid: $${formattedInsurance}`, '#28a745');
+                }
+            } else {
+                // No insurance involved
+                const message = balanceChange > 0 ? `You Win! +$${formattedAmount} 🎉` : 'You Win! 🎉';
+                this.showMessage(message, 'win');
+            }
         } else if (result === 'blackjack') {
             this.log('ROUND WINNER: PLAYER WINS WITH BLACKJACK!', 'win');
             await this.showBlackjackCelebration();
-            // For blackjack, always show the amount won (3:2 payout = 1.5x bet profit)
-            // Calculate profit from bet amount if balanceChange isn't available
-            let blackjackProfit = balanceChange;
-            if (blackjackProfit <= 0) {
-                // Fallback: calculate expected profit (1.5x bet)
-                const handsArray = this.gameState?.player?.hands || [];
-                let totalBet = 0;
-                if (handsArray.length > 0) {
-                    totalBet = handsArray.reduce((sum, hand) => sum + (hand.bet || 0), 0);
-                } else {
-                    totalBet = betAmount;
-                }
-                blackjackProfit = Math.floor(totalBet * 1.5);
+            // For blackjack, always calculate the amount won from bet amount (3:2 payout = 1.5x bet profit)
+            // This is more reliable than using balanceChange which may be incorrect
+            const handsArray = this.gameState?.player?.hands || [];
+            let totalBet = 0;
+            if (handsArray.length > 0) {
+                totalBet = handsArray.reduce((sum, hand) => sum + (hand.bet || 0), 0);
+            } else {
+                totalBet = betAmount || 0;
             }
-            const formattedBlackjackProfit = Math.abs(blackjackProfit).toLocaleString();
-            this.showMessage(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉`, 'win');
+            // Blackjack pays 3:2, so profit is 1.5x the bet
+            const blackjackProfit = Math.floor(totalBet * 1.5);
+            const formattedBlackjackProfit = blackjackProfit > 0 ? blackjackProfit.toLocaleString() : '0';
+            
+            // Check insurance outcome (unlikely but possible edge case)
+            const insuranceOutcome = this.gameState?.insurance_outcome;
+            if (insuranceOutcome && insuranceOutcome.amount > 0) {
+                if (insuranceOutcome.paid === false) {
+                    // Blackjack win but insurance was lost
+                    const formattedInsuranceLoss = insuranceOutcome.amount.toLocaleString();
+                    this.showMessageWithColors(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉, `, '#28a745', `Ins Lost: $${formattedInsuranceLoss}`, '#dc3545');
+                } else {
+                    // Insurance was paid (shouldn't happen with blackjack, but handle it)
+                    const formattedInsurance = insuranceOutcome.amount.toLocaleString();
+                    this.showMessageWithColors(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉, `, '#28a745', `Ins Paid: $${formattedInsurance}`, '#28a745');
+                }
+            } else {
+                // No insurance involved
+                this.showMessage(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉`, 'win');
+            }
         } else if (result === 'loss') {
             this.log('ROUND WINNER: DEALER WINS (Player loses)', 'bust');
             // Calculate total bet lost (for splits, sum all bets)
@@ -2365,13 +2458,22 @@ class BlackjackGame {
             }
             const formattedLoss = totalBetLost.toLocaleString();
             
-            // Check if insurance was paid
+            // Check insurance outcome
             const insuranceOutcome = this.gameState?.insurance_outcome;
-            if (insuranceOutcome && insuranceOutcome.paid === true && insuranceOutcome.amount > 0) {
-                const formattedInsurance = insuranceOutcome.amount.toLocaleString();
-                // Show loss in red and insurance payout in green
-                this.showMessageWithColors(`Lost $${formattedLoss}, `, '#dc3545', `Ins Paid: $${formattedInsurance}`, '#28a745');
+            if (insuranceOutcome && insuranceOutcome.amount > 0) {
+                if (insuranceOutcome.paid === true) {
+                    // Insurance was paid (dealer had blackjack)
+                    const formattedInsurance = insuranceOutcome.amount.toLocaleString();
+                    // Show loss in red and insurance payout in green
+                    this.showMessageWithColors(`Lost $${formattedLoss}, `, '#dc3545', `Ins Paid: $${formattedInsurance}`, '#28a745');
+                } else {
+                    // Insurance was lost (dealer didn't have blackjack)
+                    const formattedInsuranceLoss = insuranceOutcome.amount.toLocaleString();
+                    // Show both losses in red
+                    this.showMessageWithColors(`Lost $${formattedLoss}, `, '#dc3545', `Ins Lost: $${formattedInsuranceLoss}`, '#dc3545');
+                }
             } else {
+                // No insurance involved
                 this.showMessage(`You Lose -$${formattedLoss}`, 'error');
             }
         } else if (result === 'push') {
@@ -2887,6 +2989,7 @@ class BlackjackGame {
             const standBtn = document.getElementById('stand-btn');
             const doubleBtn = document.getElementById('double-btn');
             const splitBtn = document.getElementById('split-btn');
+            const surrenderBtn = document.getElementById('surrender-btn');
             
             if (hitBtn) {
                 hitBtn.disabled = true;
@@ -2901,6 +3004,10 @@ class BlackjackGame {
                 doubleBtn.removeAttribute('title');
             }
             if (splitBtn) splitBtn.disabled = true;
+            if (surrenderBtn) {
+                surrenderBtn.disabled = true;
+                surrenderBtn.style.display = 'none';
+            }
 
             const dealBtn = document.getElementById('deal-btn');
             const autoActive = !!this.gameState.auto_mode?.active;
@@ -2954,6 +3061,33 @@ class BlackjackGame {
             const canSplit = playerHand.can_split && this.gameState.state === 'player_turn' && !insuranceActive && !autoActive;
             splitBtn.style.display = canSplit ? 'block' : 'none';
             splitBtn.disabled = !canSplit;
+        }
+        
+        // Enable/disable surrender
+        const surrenderBtn = document.getElementById('surrender-btn');
+        if (surrenderBtn && playerHand) {
+            // Surrender only available on first action (exactly 2 cards, no actions taken)
+            const hasTwoCards = playerHand.cards && playerHand.cards.length === 2;
+            const canSurrender = hasTwoCards && 
+                                 this.gameState.state === 'player_turn' && 
+                                 !insuranceActive && 
+                                 !autoActive && 
+                                 !isSplitAces &&
+                                 !playerHand.is_doubled_down &&
+                                 !playerHand.is_surrendered;
+            surrenderBtn.style.display = canSurrender ? 'block' : 'none';
+            surrenderBtn.disabled = !canSurrender;
+            if (isSplitAces) {
+                surrenderBtn.title = 'not allowed on split aces';
+            } else if (insuranceActive) {
+                surrenderBtn.title = 'insurance decision required';
+            } else if (autoActive) {
+                surrenderBtn.title = 'auto mode running';
+            } else if (!hasTwoCards) {
+                surrenderBtn.title = 'surrender only available before taking any actions';
+            } else {
+                surrenderBtn.removeAttribute('title');
+            }
         }
         
         // Enable/disable hit and stand
@@ -3446,6 +3580,12 @@ function playerDoubleDown() {
 function playerSplit() {
     if (game) {
         game.playerSplit();
+    }
+}
+
+function playerSurrender() {
+    if (game) {
+        game.playerSurrender();
     }
 }
 
