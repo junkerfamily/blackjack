@@ -70,7 +70,8 @@ class BlackjackGame:
             'is_bust': hand.is_bust(),
             'is_doubled_down': hand.is_doubled_down,
             'is_split': hand.is_split,
-            'is_from_split_aces': hand.is_from_split_aces
+            'is_from_split_aces': hand.is_from_split_aces,
+            'is_surrendered': hand.is_surrendered
         }
 
     def _start_round_audit(self, starting_balance: int, bet_amount: int):
@@ -400,6 +401,59 @@ class BlackjackGame:
             self._determine_results()  # Only call once here
             return {'success': True, 'message': 'Standing. Dealer playing', 'game_over': True}
     
+    def surrender(self) -> Dict[str, Any]:
+        """
+        Player surrenders (forfeits hand and recovers half bet).
+        
+        Returns:
+            Dict with success status and game state
+        """
+        if self.state != GameState.PLAYER_TURN:
+            return {'success': False, 'message': 'Not player turn'}
+        
+        if self.insurance_offer_active or self.even_money_offer_active:
+            return {'success': False, 'message': 'Insurance decision required'}
+        
+        current_hand = self.player.get_current_hand()
+        if not current_hand:
+            return {'success': False, 'message': 'No active hand'}
+        
+        # Surrender only available on first action (exactly 2 cards, no actions taken)
+        if len(current_hand.cards) != 2:
+            return {'success': False, 'message': 'Surrender only available before taking any actions'}
+        
+        # Cannot surrender if already doubled down or hit
+        if current_hand.is_doubled_down:
+            return {'success': False, 'message': 'Cannot surrender after doubling down'}
+        
+        # Cannot surrender split Aces hands
+        if hasattr(current_hand, 'is_from_split_aces') and current_hand.is_from_split_aces:
+            return {'success': False, 'message': 'Not allowed on split aces'}
+        
+        # Mark hand as surrendered
+        current_hand.is_surrendered = True
+        
+        # Return 50% of bet to player (house keeps 50%)
+        surrender_refund = current_hand.bet // 2
+        self.player.chips += surrender_refund
+        
+        self._record_round_event('player_surrender', {
+            'hand_index': self.player.current_hand_index,
+            'bet_amount': current_hand.bet,
+            'refund_amount': surrender_refund
+        })
+        
+        # Move to next hand or end game
+        if self._move_to_next_hand():
+            return {'success': True, 'message': f'Surrendered. Refunded ${surrender_refund}. Next hand'}
+        else:
+            # All hands done - dealer plays and determine results
+            # For surrendered hands, we still need to process them in _determine_results
+            self.state = GameState.DEALER_TURN
+            self.dealer.play_hand(self.deck)
+            self._determine_results()
+            return {'success': True, 'message': f'Surrendered. Refunded ${surrender_refund}. Game over', 'game_over': True}
+    
     def double_down(self) -> Dict[str, Any]:
         """
         Player doubles down (doubles bet and takes exactly one card).
@@ -548,6 +602,15 @@ class BlackjackGame:
             print(f"  Processing hand {i}: value={hand.get_value()}, bust={hand.is_bust()}, bet=${hand.bet}")
             sys.stdout.flush()
             
+            # Skip surrendered hands (already processed, player got 50% back)
+            if hand.is_surrendered:
+                print(f"    → Hand {i} SURRENDERED - skipping (already processed)")
+                split_summaries.append((i, 'Surrender', hand.bet // 2))
+                if not result_set:
+                    self.result = "loss"
+                    result_set = True
+                continue
+            
             if hand.is_bust():
                 print(f"    → Hand {i} BUSTED - calling lose()")
                 self.player.lose(i)
@@ -611,6 +674,8 @@ class BlackjackGame:
                     parts.append(f"Split-Hand{hand_no} - Push 0")
                 elif label == 'Blackjack':
                     parts.append(f"Split-Hand{hand_no} - Blackjack {amt}")
+                elif label == 'Surrender':
+                    parts.append(f"Split-Hand{hand_no} - Surrender {amt}")
             summary_line = ", ".join(parts)
             self.split_summary = summary_line
             print(f"📝 {summary_line}")
@@ -668,13 +733,26 @@ class BlackjackGame:
         if self.round_history:
             latest_round_id = self.round_history[-1].get('round_id')
         
+        # Calculate cut card information
+        deck_remaining = len(self.deck)
+        total_cards = self.num_decks * 52
+        cut_card_threshold = total_cards // 2
+        cards_until_reshuffle = max(0, cut_card_threshold - deck_remaining)
+        percent_remaining = (deck_remaining / total_cards * 100) if total_cards > 0 else 0
+        approaching_cut_card = deck_remaining <= (cut_card_threshold + 20) and deck_remaining > cut_card_threshold
+        
         return {
             'game_id': self.game_id,
             'state': self.state,
             'player': self.player.to_dict(),
             'dealer': self.dealer.to_dict(),
             'result': self.result,
-            'deck_remaining': len(self.deck),
+            'deck_remaining': deck_remaining,
+            'cut_card_threshold': cut_card_threshold,
+            'cards_until_reshuffle': cards_until_reshuffle,
+            'percent_remaining': round(percent_remaining, 1),
+            'approaching_cut_card': approaching_cut_card,
+            'total_cards': total_cards,
             'insurance_offer_active': self.insurance_offer_active,
             'insurance_amount': self.insurance_amount,
             'even_money_offer_active': self.even_money_offer_active,
@@ -936,6 +1014,7 @@ class BlackjackGame:
             
             # Hit cards (extract from events)
             hit_cards = []
+            surrender_info = []
             for event in round_audit.get('events', []):
                 if event.get('event') == 'player_hit':
                     card = event.get('details', {}).get('card')
@@ -945,6 +1024,13 @@ class BlackjackGame:
                     card = event.get('details', {}).get('card')
                     if card:
                         hit_cards.append(f"{card} (double down)")
+                elif event.get('event') == 'player_surrender':
+                    details = event.get('details', {})
+                    surrender_info.append({
+                        'hand_index': details.get('hand_index', 0),
+                        'bet_amount': details.get('bet_amount', 0),
+                        'refund_amount': details.get('refund_amount', 0)
+                    })
             
             if hit_cards:
                 new_entry_lines.append(f"\nHit Cards:\n")
@@ -952,6 +1038,13 @@ class BlackjackGame:
                     new_entry_lines.append(f"  Hit {i}: {card}\n")
             else:
                 new_entry_lines.append(f"\nHit Cards: None\n")
+            
+            # Surrender information
+            if surrender_info:
+                new_entry_lines.append(f"\nSurrender:\n")
+                for surr in surrender_info:
+                    hand_no = surr['hand_index'] + 1
+                    new_entry_lines.append(f"  Hand {hand_no}: Surrendered (Bet: ${surr['bet_amount']}, Refund: ${surr['refund_amount']})\n")
             
             # Final hands
             new_entry_lines.append(f"\nFinal Hands:\n")
@@ -962,7 +1055,9 @@ class BlackjackGame:
                     cards = ', '.join(hand.get('cards', []))
                     value = hand.get('value', 0)
                     bet = hand.get('bet', 0)
-                    new_entry_lines.append(f"  {hand_label}: {cards} (Value: {value}, Bet: ${bet})\n")
+                    is_surrendered = hand.get('is_surrendered', False)
+                    status = " (Surrendered)" if is_surrendered else ""
+                    new_entry_lines.append(f"  {hand_label}: {cards} (Value: {value}, Bet: ${bet}){status}\n")
             
             dealer_final_hand = round_audit.get('dealer_final_hand', [])
             dealer_final_value = round_audit.get('dealer_final_value', 0)

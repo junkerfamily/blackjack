@@ -12,6 +12,22 @@
         <!-- Header -->
         <header class="table-header">
             <h1>🎰 CASINO BLACKJACK</h1>
+            <!-- Cut Card Display -->
+            <div class="cut-card-display" id="cut-card-display">
+                <div class="cut-card-info">
+                    <span class="cut-card-label">Shoe:</span>
+                    <span class="cut-card-count" id="cut-card-count">312 cards</span>
+                </div>
+                <div class="cut-card-progress-container">
+                    <div class="cut-card-progress-bar" id="cut-card-progress-bar">
+                        <div class="cut-card-marker" id="cut-card-marker"></div>
+                        <div class="cut-card-fill" id="cut-card-fill"></div>
+                    </div>
+                </div>
+                <div class="cut-card-warning" id="cut-card-warning" style="display: none;">
+                    ⚠️ Reshuffle approaching
+                </div>
+            </div>
             <div class="header-controls">
                 <button class="info-toggle" id="info-toggle" aria-label="Rules and help">
                     ℹ️
@@ -54,6 +70,7 @@
                         <li><strong>Double Down:</strong> Double your bet and receive exactly one more card. Best after 2 cards.</li>
                         <li><strong>Split:</strong> If you have two cards of equal value, split them into two hands. Each hand gets one new card.</li>
                         <li><strong>Split Aces:</strong> When splitting Aces, you get only one card per hand and cannot hit or double down.</li>
+                        <li><strong>Surrender:</strong> Forfeit your hand before taking any actions and recover half your bet. Only available on your first action with exactly 2 cards.</li>
                         <li><strong>Insurance:</strong> When dealer shows an Ace, bet up to half your bet that they have Blackjack. Pays 2:1 if correct.</li>
                         <li><strong>Soft Hand:</strong> A hand with an Ace counted as 11 (like Ace-6 = soft 17).</li>
                         <li><strong>Hard Hand:</strong> A hand where the Ace must count as 1, or no Aces (like 10-9 = hard 19).</li>
@@ -74,6 +91,7 @@
                         <li><strong>D:</strong> Deal Cards</li>
                         <li><strong>H:</strong> Hit</li>
                         <li><strong>S:</strong> Stand</li>
+                        <li><strong>R:</strong> Surrender</li>
                         <li><strong>1:</strong> Place $100 Bet</li>
                         <li><strong>5:</strong> Place $500 Bet</li>
                     </ul>
@@ -290,6 +308,7 @@
                         <button class="btn-action" id="stand-btn" onclick="playerStand()">Stand</button>
                         <button class="btn-action" id="double-btn" onclick="playerDoubleDown()">Double Down</button>
                         <button class="btn-action" id="split-btn" onclick="playerSplit()" style="display: none;">Split</button>
+                        <button class="btn-action" id="surrender-btn" onclick="playerSurrender()" style="display: none;">Surrender</button>
                     </section>
                     <div class="balance-display-block">
                         <span class="balance-label">Balance:</span>

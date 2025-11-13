@@ -1875,7 +1875,17 @@ class BlackjackGame {
                     if (result === 'blackjack') {
                         this.log('Player wins with BLACKJACK!', 'win');
                         await this.showBlackjackCelebration();
-                        this.showMessage('Blackjack! You Win! 🎉', 'win');
+                        // Calculate blackjack win amount (3:2 payout = 1.5x bet profit)
+                        const handsArray = this.gameState?.player?.hands || [];
+                        let totalBet = 0;
+                        if (handsArray.length > 0) {
+                            totalBet = handsArray.reduce((sum, hand) => sum + (hand.bet || 0), 0);
+                        } else {
+                            totalBet = this.currentBet || 0;
+                        }
+                        const blackjackProfit = Math.floor(totalBet * 1.5);
+                        const formattedBlackjackProfit = blackjackProfit > 0 ? blackjackProfit.toLocaleString() : '0';
+                        this.showMessage(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉`, 'win');
                     } else if (result === 'push') {
                         this.log('Round ends in PUSH (tie)', 'action');
                         this.showMessage("It's a Push - Tie!", 'info');
@@ -2393,25 +2403,38 @@ class BlackjackGame {
         if (result === 'win') {
             this.log('ROUND WINNER: PLAYER WINS!', 'win');
             
+            // For regular wins (including 5-card Charlie), always calculate the amount won from bet amount (1:1 payout = 1x bet profit)
+            // This is more reliable than using balanceChange which may be incorrect
+            const handsArray = this.gameState?.player?.hands || [];
+            let totalBet = 0;
+            if (handsArray.length > 0) {
+                totalBet = handsArray.reduce((sum, hand) => sum + (hand.bet || 0), 0);
+            } else {
+                totalBet = betAmount || 0;
+            }
+            // Regular win pays 1:1, so profit is 1x the bet (bet back + bet profit = 2x bet total, but profit is 1x bet)
+            const winProfit = totalBet;
+            const formattedWinProfit = winProfit > 0 ? winProfit.toLocaleString() : '0';
+            
             // Check insurance outcome
             const insuranceOutcome = this.gameState?.insurance_outcome;
             if (insuranceOutcome && insuranceOutcome.amount > 0) {
                 if (insuranceOutcome.paid === false) {
                     // Player won but insurance was lost (dealer didn't have blackjack)
                     const formattedInsuranceLoss = insuranceOutcome.amount.toLocaleString();
-                    const winMessage = balanceChange > 0 ? `You Win! +$${formattedAmount}` : 'You Win!';
+                    const winMessage = `You Win! +$${formattedWinProfit}`;
                     // Show win in green and insurance loss in red
                     this.showMessageWithColors(`${winMessage} 🎉, `, '#28a745', `Ins Lost: $${formattedInsuranceLoss}`, '#dc3545');
                 } else {
                     // Insurance was paid (shouldn't happen on a win, but handle it)
                     const formattedInsurance = insuranceOutcome.amount.toLocaleString();
-                    const winMessage = balanceChange > 0 ? `You Win! +$${formattedAmount}` : 'You Win!';
+                    const winMessage = `You Win! +$${formattedWinProfit}`;
                     // Show both in green
                     this.showMessageWithColors(`${winMessage} 🎉, `, '#28a745', `Ins Paid: $${formattedInsurance}`, '#28a745');
                 }
             } else {
                 // No insurance involved
-                const message = balanceChange > 0 ? `You Win! +$${formattedAmount} 🎉` : 'You Win! 🎉';
+                const message = `You Win! +$${formattedWinProfit} 🎉`;
                 this.showMessage(message, 'win');
             }
         } else if (result === 'blackjack') {
@@ -2580,6 +2603,9 @@ class BlackjackGame {
         this.updateInsuranceUI();
         this.updateAutoStatusUI();
         
+        // Update cut card display
+        this.updateCutCardDisplay();
+        
         // Show/hide Log Hand button based on game state
         const logHandBtn = document.getElementById('log-hand-btn');
         if (logHandBtn) {
@@ -2681,6 +2707,74 @@ class BlackjackGame {
             // Clear action status when insurance offer is no longer active
             this.clearActionStatus();
         }
+    }
+
+    /**
+     * Update cut card display with current deck information
+     */
+    updateCutCardDisplay() {
+        if (!this.gameState) return;
+
+        const display = document.getElementById('cut-card-display');
+        const countEl = document.getElementById('cut-card-count');
+        const fillEl = document.getElementById('cut-card-fill');
+        const warningEl = document.getElementById('cut-card-warning');
+        
+        if (!display || !countEl || !fillEl) return;
+
+        const deckRemaining = this.gameState.deck_remaining || 312;
+        const totalCards = this.gameState.total_cards || 312;
+        const cutCardThreshold = this.gameState.cut_card_threshold || 156;
+        const percentRemaining = this.gameState.percent_remaining || 100;
+        const approachingCutCard = this.gameState.approaching_cut_card || false;
+
+        // Update card count display
+        countEl.textContent = `${deckRemaining} cards`;
+
+        // Calculate progress bar width (percentage of deck remaining)
+        const progressWidth = Math.max(0, Math.min(100, percentRemaining));
+        fillEl.style.width = `${progressWidth}%`;
+
+        // Determine color state based on card count
+        // Green: >200 cards, Yellow: 156-200, Orange: 130-156, Red: <130
+        display.classList.remove('warning', 'danger');
+        
+        if (deckRemaining <= cutCardThreshold) {
+            // At or below cut card - reshuffle will happen
+            display.classList.add('danger');
+            if (warningEl) warningEl.style.display = 'block';
+        } else if (approachingCutCard || deckRemaining <= 200) {
+            // Approaching cut card
+            display.classList.add('warning');
+            if (warningEl && approachingCutCard) {
+                warningEl.style.display = 'block';
+            } else if (warningEl) {
+                warningEl.style.display = 'none';
+            }
+        } else {
+            // Well above cut card
+            if (warningEl) warningEl.style.display = 'none';
+        }
+
+        // Update fill color based on proximity to cut card
+        let fillColor = '';
+        if (deckRemaining > 200) {
+            // Green
+            fillColor = 'linear-gradient(90deg, rgba(40, 167, 69, 0.8) 0%, rgba(40, 167, 69, 0.8) 100%)';
+        } else if (deckRemaining > cutCardThreshold) {
+            // Yellow to Orange gradient
+            const progress = (deckRemaining - cutCardThreshold) / (200 - cutCardThreshold);
+            if (progress > 0.5) {
+                fillColor = 'linear-gradient(90deg, rgba(255, 193, 7, 0.8) 0%, rgba(255, 193, 7, 0.8) 100%)';
+            } else {
+                fillColor = 'linear-gradient(90deg, rgba(255, 152, 0, 0.8) 0%, rgba(255, 152, 0, 0.8) 100%)';
+            }
+        } else {
+            // Red - reshuffle imminent
+            fillColor = 'linear-gradient(90deg, rgba(220, 53, 69, 0.8) 0%, rgba(220, 53, 69, 0.8) 100%)';
+        }
+        
+        fillEl.style.background = fillColor;
     }
 
     prefillAutoModeForm() {

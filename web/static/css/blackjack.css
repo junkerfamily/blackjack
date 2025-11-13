@@ -140,6 +140,120 @@ body {
     box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4);
 }
 
+/* Cut Card Display */
+.cut-card-display {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 200px;
+    max-width: 280px;
+}
+
+.cut-card-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85em;
+}
+
+.cut-card-label {
+    color: var(--text-light);
+    opacity: 0.8;
+    font-weight: 500;
+}
+
+.cut-card-count {
+    color: var(--gold);
+    font-weight: 700;
+    font-size: 1.1em;
+}
+
+.cut-card-progress-container {
+    width: 100%;
+    height: 20px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+}
+
+.cut-card-progress-bar {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    background: linear-gradient(90deg, 
+        rgba(40, 167, 69, 0.3) 0%,
+        rgba(40, 167, 69, 0.3) 50%,
+        rgba(255, 193, 7, 0.3) 50%,
+        rgba(255, 193, 7, 0.3) 70%,
+        rgba(255, 152, 0, 0.3) 70%,
+        rgba(255, 152, 0, 0.3) 85%,
+        rgba(220, 53, 69, 0.3) 85%,
+        rgba(220, 53, 69, 0.3) 100%);
+}
+
+.cut-card-marker {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--gold);
+    box-shadow: 0 0 4px rgba(255, 215, 0, 0.8);
+    z-index: 2;
+}
+
+.cut-card-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    background: linear-gradient(90deg,
+        rgba(40, 167, 69, 0.8) 0%,
+        rgba(40, 167, 69, 0.8) 50%,
+        rgba(255, 193, 7, 0.8) 50%,
+        rgba(255, 193, 7, 0.8) 70%,
+        rgba(255, 152, 0, 0.8) 70%,
+        rgba(255, 152, 0, 0.8) 85%,
+        rgba(220, 53, 69, 0.8) 85%,
+        rgba(220, 53, 69, 0.8) 100%);
+    transition: width 0.3s ease;
+    z-index: 1;
+}
+
+.cut-card-warning {
+    font-size: 0.75em;
+    color: #ffc107;
+    font-weight: 600;
+    animation: pulse-warning 1.5s ease-in-out infinite;
+    text-shadow: 0 0 4px rgba(255, 193, 7, 0.8);
+}
+
+@keyframes pulse-warning {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}
+
+/* Cut card display color states */
+.cut-card-display.warning .cut-card-count {
+    color: #ffc107;
+}
+
+.cut-card-display.danger .cut-card-count {
+    color: #dc3545;
+}
+
 .settings-panel {
     position: absolute;
     top: 58px;
@@ -1017,6 +1131,20 @@ button:disabled {
 
     .table-header h1 {
         font-size: 1.8em;
+    }
+
+    .cut-card-display {
+        position: relative;
+        left: auto;
+        top: auto;
+        transform: none;
+        width: 100%;
+        max-width: 100%;
+        align-items: center;
+    }
+
+    .cut-card-progress-container {
+        width: 100%;
     }
 
     .chip {
