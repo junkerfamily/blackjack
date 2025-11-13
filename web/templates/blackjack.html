@@ -77,6 +77,7 @@
                         <li><strong>Dealer Rules:</strong> Dealer must hit on 16 or less, must stand on 17 or more.</li>
                         <li><strong>Push:</strong> If your hand ties the dealer's, it's a push and your bet is returned.</li>
                         <li><strong>5 Card Charlie:</strong> If you get 5 cards without busting, you automatically win that hand!</li>
+                        <li><strong>Shoe & Cut Card Display:</strong> The shoe graphic shows remaining cards in the 6-deck shoe. When it drops below 156 cards (50%), a reshuffle warning appears. The deck automatically reshuffles before the next deal when it reaches the cut card threshold.</li>
                     </ul>
                     <div class="rules-navigation">
                         <button class="rules-prev-btn" id="rules-prev-btn">← Basic Rules</button>
@@ -92,6 +93,7 @@
                         <li><strong>H:</strong> Hit</li>
                         <li><strong>S:</strong> Stand</li>
                         <li><strong>R:</strong> Surrender</li>
+                        <li><strong>I:</strong> Insurance</li>
                         <li><strong>1:</strong> Place $100 Bet</li>
                         <li><strong>5:</strong> Place $500 Bet</li>
                     </ul>
@@ -183,6 +185,11 @@
                     <label for="dealer-delay-input" class="settings-label">Dealer Card Delay (ms)</label>
                     <input type="number" id="dealer-delay-input" class="settings-input" min="0" max="5000" step="50" value="1000">
                     <span class="settings-helper" id="dealer-delay-helper">Delay between dealer hits (0-5000 ms)</span>
+                </div>
+                <div class="settings-row">
+                    <label for="dealer-hits-soft17-toggle" class="settings-label">Dealer Hits Soft 17</label>
+                    <input type="checkbox" id="dealer-hits-soft17-toggle" class="settings-checkbox">
+                    <span class="settings-helper">When enabled, dealer hits on Ace-6 (soft 17). Default: dealer stands on all 17s.</span>
                 </div>
                 <div class="settings-row">
                     <span class="settings-label">Hand Log</span>
@@ -280,6 +287,10 @@
                 <!-- Betting Area -->
                 <section class="betting-area" id="betting-area">
                     <div class="betting-label" id="betting-label">Place Your Bet</div>
+                    <div class="table-limits-display" id="table-limits-display">
+                        <span class="limits-label">Table Limits:</span>
+                        <span class="limits-value" id="table-limits-value">$5 - $500</span>
+                    </div>
                     <div class="chip-tray" id="chip-tray">
                         <button class="chip" data-value="1" onclick="selectChip(1)">
                             <span class="chip-value">$1</span>
@@ -323,6 +334,19 @@
                         <div class="history-item-empty">No games yet</div>
                     </div>
                 </section>
+            </div>
+        </div>
+
+        <!-- Table Sign Display -->
+        <div class="table-sign-container">
+            <div class="table-sign" id="table-sign">
+                <div class="table-sign-content" id="table-sign-content">
+                    <span class="sign-text">BLACKJACK PAYS 3:2</span>
+                    <span class="sign-separator">•</span>
+                    <span class="sign-text">DEALER STANDS ON 17</span>
+                    <span class="sign-separator">•</span>
+                    <span class="sign-text">TABLE LIMITS $5 - $500</span>
+                </div>
             </div>
         </div>
     </div>

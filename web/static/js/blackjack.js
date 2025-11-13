@@ -26,6 +26,9 @@ class BlackjackGame {
         this.dealerHitDelayMs = this.loadDealerHitDelay();
         this.dealerDelayInput = null;
         this.dealerDelayHelperElement = null;
+        this.dealerHitsSoft17Key = 'blackjack_dealer_hits_soft17';
+        this.dealerHitsSoft17 = this.loadDealerHitsSoft17();
+        this.dealerHitsSoft17Toggle = null;
         this.actionStatusElement = null; // Status message element
         this.actionStatusTimeout = null; // Timeout for clearing status
         this.hecklerElement = null;
@@ -79,6 +82,14 @@ class BlackjackGame {
                 'Soft {total} was already pretty. Why the makeover?',
                 'You had a soft {total} and still hit? Even the cocktail waitress winced.',
                 'Soft {total} and you asked for more? That cloud above you is pure judgement.'
+            ],
+            standLow: [
+                'Standing on {total}? You know you can\'t win with that, right?',
+                '{total} and you\'re done? The dealer just smiled.',
+                'Standing on {total}? That\'s not how math works, champ.',
+                'You stood on {total}? Even the shoe is laughing.',
+                '{total} and you fold? Might as well hand over your wallet now.',
+                'Standing on {total}? The house edge just got a promotion.'
             ]
         };
         this.useSpeechSynthesis = typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
@@ -339,6 +350,33 @@ class BlackjackGame {
         };
     }
 
+    loadDealerHitsSoft17() {
+        if (typeof window === 'undefined' || !window.localStorage) {
+            return false;
+        }
+        try {
+            const stored = window.localStorage.getItem(this.dealerHitsSoft17Key);
+            if (stored === null || stored === undefined) {
+                return false; // Default: dealer stands on all 17s
+            }
+            return stored === 'true';
+        } catch (error) {
+            console.warn('Failed to load dealer hits soft 17 config:', error);
+            return false;
+        }
+    }
+
+    saveDealerHitsSoft17() {
+        if (typeof window === 'undefined' || !window.localStorage) {
+            return;
+        }
+        try {
+            window.localStorage.setItem(this.dealerHitsSoft17Key, String(this.dealerHitsSoft17));
+        } catch (error) {
+            console.warn('Failed to save dealer hits soft 17 config:', error);
+        }
+    }
+
     loadDealerHitDelay() {
         if (typeof window === 'undefined' || !window.localStorage) {
             return this.defaultDealerHitDelayMs;
@@ -567,6 +605,7 @@ class BlackjackGame {
             this.bankrollHelperElement = document.getElementById('bankroll-setting-helper');
             this.dealerDelayInput = document.getElementById('dealer-delay-input');
             this.dealerDelayHelperElement = document.getElementById('dealer-delay-helper');
+            this.dealerHitsSoft17Toggle = document.getElementById('dealer-hits-soft17-toggle');
 
             // Only proceed if the essential elements exist
             if (!this.settingsToggle || !this.settingsPanel) {
@@ -632,6 +671,26 @@ class BlackjackGame {
                 this.dealerDelayInput.addEventListener('blur', applyDealerDelayChange);
             } else {
                 console.warn('Dealer delay setting input not found in settings panel');
+            }
+
+            if (this.dealerHitsSoft17Toggle) {
+                this.dealerHitsSoft17Toggle.checked = this.dealerHitsSoft17;
+                this.dealerHitsSoft17Toggle.addEventListener('change', (event) => {
+                    this.dealerHitsSoft17 = event.target.checked;
+                    this.saveDealerHitsSoft17();
+                    const statusMessage = this.dealerHitsSoft17 
+                        ? 'Dealer will hit on soft 17 (takes effect on next game)' 
+                        : 'Dealer will stand on all 17s (takes effect on next game)';
+                    this.log(statusMessage, 'success');
+                    this.showMessage(statusMessage, 'info');
+                    // Update table sign to reflect new setting
+                    if (this.gameState) {
+                        this.gameState.dealer_hits_soft_17 = this.dealerHitsSoft17;
+                        this.updateTableSign();
+                    }
+                });
+            } else {
+                console.warn('Dealer hits soft 17 toggle not found in settings panel');
             }
 
             this.updateBankrollHelper();
@@ -1073,6 +1132,27 @@ class BlackjackGame {
     }
 
     /**
+     * Evaluate if standing is a bad decision (for heckler)
+     */
+    evaluateStandDecision(hand) {
+        if (!hand) {
+            return { shouldHeckle: false, message: null };
+        }
+        const total = hand.value ?? 0;
+        
+        // Standing with 11 or less is always a bad play
+        if (total <= 11) {
+            const template = this.pickRandomMessage('standLow');
+            return {
+                shouldHeckle: !!template,
+                message: this.formatHecklerMessage(template, { total })
+            };
+        }
+
+        return { shouldHeckle: false, message: null };
+    }
+
+    /**
      * Show the heckler popover with disdainful commentary
      */
     showHecklerMessage(message) {
@@ -1193,6 +1273,9 @@ class BlackjackGame {
                 await this.sendInsuranceDecision('decline');
             });
         }
+        
+        // Initialize table sign with default values
+        this.updateTableSign();
         
         // Auto mode controls
         this.autoPanelVisible = false;
@@ -1316,6 +1399,7 @@ class BlackjackGame {
         console.log('%cD%c = Deal Cards', 'color: #FFD700; font-weight: bold', 'color: #fff');
         console.log('%c1%c = Bet $100', 'color: #FFD700; font-weight: bold', 'color: #fff');
         console.log('%c5%c = Bet $500', 'color: #FFD700; font-weight: bold', 'color: #fff');
+        console.log('%cI%c = Insurance', 'color: #FFD700; font-weight: bold', 'color: #fff');
 
         document.addEventListener('keydown', (event) => {
             // Don't trigger hotkeys if user is typing in an input field
@@ -1351,6 +1435,20 @@ class BlackjackGame {
                     this.log('⌨️ Hotkey: $500 Bet (5)', 'action');
                     this.selectChip(500);
                     this.addToBet(500);
+                    break;
+                case 'i':
+                    // Check if insurance is available
+                    const insuranceBtn = document.getElementById('insurance-btn');
+                    const insuranceAvailable = insuranceBtn && 
+                        !insuranceBtn.classList.contains('disabled') && 
+                        insuranceBtn.style.display !== 'none' &&
+                        this.gameState && 
+                        (this.gameState.insurance_offer_active || this.gameState.even_money_offer_active);
+                    if (insuranceAvailable) {
+                        this.log('⌨️ Hotkey: Insurance (I)', 'action');
+                        const decision = insuranceBtn.dataset.decision || 'buy';
+                        this.sendInsuranceDecision(decision);
+                    }
                     break;
                 default:
                     // Ignore other keys
@@ -1410,9 +1508,23 @@ class BlackjackGame {
             this.selectChip(value);
         }
         
+        // Validate against table limits before adding
+        const limits = this.gameState?.table_limits || { min_bet: 5, max_bet: 500 };
+        const newBetAmount = this.currentBet + value;
+        
+        if (newBetAmount > limits.max_bet) {
+            this.showMessage(`Maximum bet is $${limits.max_bet}`, 'error');
+            return;
+        }
+        
         // Add the chip value to current bet
         this.currentBet += value;
         this.updateBetDisplay();
+        
+        // Update chip button states after bet change
+        if (this.gameState?.table_limits) {
+            this.updateChipButtonStates(this.gameState.table_limits);
+        }
     }
 
     /**
@@ -1425,6 +1537,11 @@ class BlackjackGame {
             chip.classList.remove('selected');
         });
         this.updateBetDisplay();
+        
+        // Update chip button states after clearing bet
+        if (this.gameState?.table_limits) {
+            this.updateChipButtonStates(this.gameState.table_limits);
+        }
     }
 
     /**
@@ -1615,7 +1732,7 @@ class BlackjackGame {
             // Otherwise create a new game with $1000
             const requestData = this.gameId ? 
                 { game_id: this.gameId } : 
-                { starting_chips: 1000 };
+                { starting_chips: 1000, dealer_hits_soft_17: this.dealerHitsSoft17 };
             
             const result = await this.apiCall('/api/new_game', 'POST', requestData);
             
@@ -1658,7 +1775,8 @@ class BlackjackGame {
             this.showBettingArea();
 
             const result = await this.apiCall('/api/new_game', 'POST', {
-                starting_chips: bankrollAmount
+                starting_chips: bankrollAmount,
+                dealer_hits_soft_17: this.dealerHitsSoft17
             });
 
             if (result.success) {
@@ -1689,6 +1807,17 @@ class BlackjackGame {
         
         if (amount <= 0) {
             this.showMessage('Please select a bet amount', 'error');
+            return false;
+        }
+
+        // Validate against table limits
+        const limits = this.gameState?.table_limits || { min_bet: 5, max_bet: 500 };
+        if (amount < limits.min_bet) {
+            this.showMessage(`Minimum bet is $${limits.min_bet}`, 'error');
+            return false;
+        }
+        if (amount > limits.max_bet) {
+            this.showMessage(`Maximum bet is $${limits.max_bet}`, 'error');
             return false;
         }
         
@@ -2097,9 +2226,17 @@ class BlackjackGame {
             return;
         }
         
-        const playerValue = this.gameState?.player?.hands?.[this.gameState.player.current_hand_index]?.value || 0;
+        const playerHand = this.gameState?.player?.hands?.[this.gameState.player.current_hand_index];
+        const playerValue = playerHand?.value || 0;
         this.log(`Player STANDS with value: ${playerValue}`, 'action');
         this.setActionStatus('standing');
+        
+        // Check if standing is a bad decision (11 or less)
+        const heckleAssessment = this.evaluateStandDecision(playerHand);
+        if (heckleAssessment.shouldHeckle && heckleAssessment.message) {
+            this.log(`Heckler triggered: ${heckleAssessment.message}`, 'warn');
+            this.showHecklerMessage(heckleAssessment.message);
+        }
         
         try {
             this.showLoading();
@@ -2606,6 +2743,12 @@ class BlackjackGame {
         // Update cut card display
         this.updateCutCardDisplay();
         
+        // Update table limits display
+        this.updateTableLimitsDisplay();
+        
+        // Update table sign display
+        this.updateTableSign();
+        
         // Show/hide Log Hand button based on game state
         const logHandBtn = document.getElementById('log-hand-btn');
         if (logHandBtn) {
@@ -2775,6 +2918,121 @@ class BlackjackGame {
         }
         
         fillEl.style.background = fillColor;
+    }
+
+    /**
+     * Update table limits display
+     */
+    updateTableLimitsDisplay() {
+        if (!this.gameState) return;
+
+        const limitsEl = document.getElementById('table-limits-value');
+        if (!limitsEl) return;
+
+        const limits = this.gameState.table_limits || { min_bet: 5, max_bet: 500 };
+        limitsEl.textContent = `$${limits.min_bet} - $${limits.max_bet}`;
+
+        // Update chip button states based on limits and balance
+        this.updateChipButtonStates(limits);
+    }
+
+    /**
+     * Update chip button states based on table limits and balance
+     */
+    updateChipButtonStates(limits) {
+        const chipButtons = document.querySelectorAll('.chip-tray .chip');
+        const currentBet = this.currentBet || 0;
+        const balance = this.gameState?.player?.chips || 0;
+        const maxBet = limits.max_bet || 500;
+        const minBet = limits.min_bet || 5;
+
+        chipButtons.forEach(button => {
+            const chipValue = parseInt(button.dataset.value) || 0;
+            const newBetAmount = currentBet + chipValue;
+            
+            // Disable if:
+            // 1. Would exceed max bet
+            // 2. Would exceed balance
+            // 3. Chip value is less than min bet (for first bet)
+            const wouldExceedMax = newBetAmount > maxBet;
+            const wouldExceedBalance = newBetAmount > balance;
+            const belowMinBet = currentBet === 0 && chipValue < minBet;
+            
+            if (wouldExceedMax || wouldExceedBalance || belowMinBet) {
+                button.disabled = true;
+                button.classList.add('disabled');
+                button.title = wouldExceedMax 
+                    ? `Maximum bet is $${maxBet}`
+                    : wouldExceedBalance
+                    ? 'Insufficient funds'
+                    : `Minimum bet is $${minBet}`;
+            } else {
+                button.disabled = false;
+                button.classList.remove('disabled');
+                button.title = '';
+            }
+        });
+    }
+
+    /**
+     * Update table sign display with current rules
+     */
+    updateTableSign() {
+        const signContent = document.getElementById('table-sign-content');
+        if (!signContent) return;
+
+        // Use game state if available, otherwise use defaults
+        const limits = this.gameState?.table_limits || { min_bet: 5, max_bet: 500 };
+        const dealerHitsSoft17 = this.gameState?.dealer_hits_soft_17 || this.dealerHitsSoft17 || false;
+
+        // Build sign text array
+        const signTexts = [
+            'BLACKJACK PAYS 3:2',
+            dealerHitsSoft17 ? 'DEALER HITS SOFT 17' : 'DEALER STANDS ON 17',
+            `TABLE LIMITS $${limits.min_bet} - $${limits.max_bet}`
+        ];
+
+        // Clear existing content
+        signContent.innerHTML = '';
+
+        // Add text elements with separators
+        signTexts.forEach((text, index) => {
+            const textSpan = document.createElement('span');
+            textSpan.className = 'sign-text';
+            textSpan.textContent = text;
+            signContent.appendChild(textSpan);
+
+            // Add separator between items (not after last)
+            if (index < signTexts.length - 1) {
+                const separator = document.createElement('span');
+                separator.className = 'sign-separator';
+                separator.textContent = '•';
+                signContent.appendChild(separator);
+            }
+        });
+
+        // Check if content overflows and enable marquee if needed
+        setTimeout(() => {
+            const sign = document.getElementById('table-sign');
+            if (sign && signContent) {
+                const signWidth = sign.offsetWidth - 40; // Account for padding
+                const contentWidth = signContent.scrollWidth;
+                
+                if (contentWidth > signWidth) {
+                    // Content overflows - enable marquee
+                    sign.classList.add('marquee-mode');
+                    // Store content text for ::after pseudo-element duplication
+                    const fullText = Array.from(signContent.querySelectorAll('.sign-text'))
+                        .map(span => span.textContent)
+                        .join(' • ');
+                    signContent.setAttribute('data-content', fullText);
+                } else {
+                    // Content fits - disable marquee
+                    sign.classList.remove('marquee-mode');
+                    signContent.removeAttribute('data-content');
+                }
+            }
+        }, 100);
     }
 
     prefillAutoModeForm() {

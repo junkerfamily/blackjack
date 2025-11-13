@@ -156,11 +156,44 @@ def is_blackjack(cards: List[Card]) -> bool:
     
     Args:
         cards: List of Card objects
-        
+    
     Returns:
         True if blackjack, False otherwise
     """
     return len(cards) == 2 and calculate_hand_value(cards) == 21
+
+
+def is_soft_17(cards: List[Card]) -> bool:
+    """
+    Check if a hand is a soft 17 (Ace + 6, where Ace counts as 11, total = 17).
+    
+    Args:
+        cards: List of Card objects
+    
+    Returns:
+        True if soft 17, False otherwise
+    """
+    if calculate_hand_value(cards) != 17:
+        return False
+    
+    # Check if there's an Ace that's being counted as 11
+    # A soft 17 means we have an Ace counted as 11, so if we subtract 10 we'd get 7
+    total_with_ace_as_11 = 0
+    aces = 0
+    
+    for card in cards:
+        if card.is_ace():
+            aces += 1
+            total_with_ace_as_11 += 11
+        else:
+            total_with_ace_as_11 += card.value
+    
+    # If we have an Ace and total is 17, check if subtracting 10 would make it 7
+    # This means the Ace is being counted as 11 (soft 17)
+    if aces > 0 and total_with_ace_as_11 == 17:
+        return True
+    
+    return False
 
 
 def is_bust(cards: List[Card]) -> bool:

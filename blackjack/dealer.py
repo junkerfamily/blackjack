@@ -3,7 +3,7 @@ Dealer class for Blackjack game
 """
 
 from typing import List, Optional
-from blackjack.deck import Card, calculate_hand_value, is_blackjack, is_bust
+from blackjack.deck import Card, calculate_hand_value, is_blackjack, is_bust, is_soft_17
 
 
 class Dealer:
@@ -48,32 +48,45 @@ class Dealer:
         """Check if dealer is bust"""
         return is_bust(self.hand)
     
-    def should_hit(self) -> bool:
+    def should_hit(self, hits_soft_17: bool = False) -> bool:
         """
         Determine if dealer should hit based on standard rules.
         Dealer must hit on 16 or less, stand on 17 or more.
+        If hits_soft_17 is True, dealer will also hit on soft 17.
+        
+        Args:
+            hits_soft_17: If True, dealer hits on soft 17 (Ace + 6)
         
         Returns:
             True if dealer should hit, False if should stand
         """
         value = self.get_value()
-        return value < 17
+        if value < 17:
+            return True
+        
+        # If value is 17, check if it's soft 17 and if we should hit
+        if value == 17 and hits_soft_17 and is_soft_17(self.hand):
+            return True
+        
+        return False
     
     def reveal_hole_card(self):
         """Reveal the hole card"""
         self.hole_card_hidden = False
     
-    def play_hand(self, deck):
+    def play_hand(self, deck, hits_soft_17: bool = False):
         """
         Play dealer's hand automatically according to rules.
         Dealer must hit on 16 or less, stand on 17 or more.
+        If hits_soft_17 is True, dealer will also hit on soft 17.
         
         Args:
             deck: Deck to draw cards from
+            hits_soft_17: If True, dealer hits on soft 17 (Ace + 6)
         """
         self.reveal_hole_card()
         
-        while self.should_hit():
+        while self.should_hit(hits_soft_17):
             card = deck.deal_card()
             if card:
                 self.add_card(card)

@@ -73,6 +73,7 @@ class Hand:
             'is_doubled_down': self.is_doubled_down,
             'is_split': self.is_split,
             'is_from_split_aces': self.is_from_split_aces,
+            'is_surrendered': self.is_surrendered,
             'can_double_down': self.can_double_down(),
             'can_split': self.can_split()
         }

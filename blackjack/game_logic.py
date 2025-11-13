@@ -25,7 +25,7 @@ class GameState:
 class BlackjackGame:
     """Main game class that manages the blackjack game state"""
     
-    def __init__(self, starting_chips: int = 1000, num_decks: int = 6):
+    def __init__(self, starting_chips: int = 1000, num_decks: int = 6, min_bet: int = 5, max_bet: int = 500, dealer_hits_soft_17: bool = False):
         """Initialize a new blackjack game (default 6 decks like a casino shoe)"""
         self.game_id: str = str(uuid.uuid4())
         self.num_decks: int = num_decks
@@ -35,6 +35,11 @@ class BlackjackGame:
         self.dealer: Dealer = Dealer()
         self.state: str = GameState.BETTING
         self.result: Optional[str] = None  # "win", "loss", "push", "blackjack"
+        # Table limits
+        self.min_bet: int = min_bet
+        self.max_bet: int = max_bet
+        # Dealer rules
+        self.dealer_hits_soft_17: bool = dealer_hits_soft_17
         # Insurance / Even Money state
         self.insurance_offer_active: bool = False
         self.insurance_for_hand_index: Optional[int] = None
@@ -217,6 +222,12 @@ class BlackjackGame:
         if amount <= 0:
             return {'success': False, 'message': 'Bet must be greater than 0'}
         
+        if amount < self.min_bet:
+            return {'success': False, 'message': f'Minimum bet is ${self.min_bet}'}
+        
+        if amount > self.max_bet:
+            return {'success': False, 'message': f'Maximum bet is ${self.max_bet}'}
+        
         if self.player.chips < amount:
             return {'success': False, 'message': 'Insufficient Funds'}
         
@@ -397,7 +408,7 @@ class BlackjackGame:
         else:
             # All hands done, dealer plays and determine results
             self.state = GameState.DEALER_TURN
-            self.dealer.play_hand(self.deck)
+            self.dealer.play_hand(self.deck, self.dealer_hits_soft_17)
             self._determine_results()  # Only call once here
             return {'success': True, 'message': 'Standing. Dealer playing', 'game_over': True}
     
@@ -450,7 +461,7 @@ class BlackjackGame:
             # All hands done - dealer plays and determine results
             # For surrendered hands, we still need to process them in _determine_results
             self.state = GameState.DEALER_TURN
-            self.dealer.play_hand(self.deck)
+            self.dealer.play_hand(self.deck, self.dealer_hits_soft_17)
             self._determine_results()
             return {'success': True, 'message': f'Surrendered. Refunded ${surrender_refund}. Game over', 'game_over': True}
     
@@ -505,7 +516,7 @@ class BlackjackGame:
             else:
                 # All hands busted - dealer plays and determine results
                 self.state = GameState.DEALER_TURN
-                self.dealer.play_hand(self.deck)
+                self.dealer.play_hand(self.deck, self.dealer_hits_soft_17)
                 self._determine_results()
                 return {'success': True, 'message': 'Doubled down - bust! Game over', 'bust': True, 'game_over': True}
         
@@ -515,7 +526,7 @@ class BlackjackGame:
         else:
             # All hands done, dealer plays and determine results
             self.state = GameState.DEALER_TURN
-            self.dealer.play_hand(self.deck)
+            self.dealer.play_hand(self.deck, self.dealer_hits_soft_17)
             self._determine_results()  # Only call once here
             return {'success': True, 'message': 'Doubled down. Dealer playing', 'game_over': True}
     
@@ -753,6 +764,11 @@ class BlackjackGame:
             'percent_remaining': round(percent_remaining, 1),
             'approaching_cut_card': approaching_cut_card,
             'total_cards': total_cards,
+            'table_limits': {
+                'min_bet': self.min_bet,
+                'max_bet': self.max_bet
+            },
+            'dealer_hits_soft_17': self.dealer_hits_soft_17,
             'insurance_offer_active': self.insurance_offer_active,
             'insurance_amount': self.insurance_amount,
             'even_money_offer_active': self.even_money_offer_active,

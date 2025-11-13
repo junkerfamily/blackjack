@@ -46,6 +46,77 @@ body {
     flex-direction: column;
 }
 
+/* Table Sign Display */
+.table-sign-container {
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 2px solid rgba(255, 215, 0, 0.3);
+}
+
+.table-sign {
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.6) 0%, rgba(20, 20, 20, 0.8) 100%);
+    border: 2px solid var(--gold);
+    border-radius: 8px;
+    padding: 12px 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), inset 0 0 8px rgba(255, 215, 0, 0.1);
+    overflow: hidden;
+    position: relative;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.table-sign-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    white-space: nowrap;
+    color: var(--gold);
+    font-size: 0.9em;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.table-sign.marquee-mode {
+    overflow: hidden;
+}
+
+.table-sign.marquee-mode .table-sign-content {
+    animation: marquee-scroll 20s linear infinite;
+    display: inline-block;
+}
+
+.table-sign.marquee-mode .table-sign-content:hover {
+    animation-play-state: paused;
+}
+
+.table-sign.marquee-mode .table-sign-content::after {
+    content: attr(data-content);
+    padding-left: 50px;
+}
+
+@keyframes marquee-scroll {
+    0% {
+        transform: translateX(0);
+    }
+    100% {
+        transform: translateX(-50%);
+    }
+}
+
+.sign-text {
+    color: var(--gold);
+    text-shadow: 0 0 4px rgba(255, 215, 0, 0.5);
+}
+
+.sign-separator {
+    color: rgba(255, 215, 0, 0.6);
+    font-size: 1.2em;
+    margin: 0 4px;
+}
+
 /* Balance Display - Upper Right Corner */
 .balance-display-top-right {
     display: none;
@@ -808,6 +879,31 @@ body {
     letter-spacing: 1px;
 }
 
+.table-limits-display {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 8px;
+    font-size: 0.9em;
+    margin-bottom: 8px;
+}
+
+.limits-label {
+    color: var(--text-light);
+    opacity: 0.9;
+    font-weight: 500;
+}
+
+.limits-value {
+    color: var(--gold);
+    font-weight: 700;
+    font-size: 1.1em;
+}
+
 .chip-tray {
     display: flex;
     justify-content: center;
@@ -918,6 +1014,19 @@ body {
     border-color: var(--gold);
     border-width: 4px;
     box-shadow: 0 0 12px var(--gold);
+}
+
+.chip.disabled,
+.chip:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: grayscale(0.5);
+}
+
+.chip.disabled:hover,
+.chip:disabled:hover {
+    transform: none;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .chip.default-bet {

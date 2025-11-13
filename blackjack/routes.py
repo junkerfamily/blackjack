@@ -65,7 +65,9 @@ def new_game():
             if num_decks < 1 or num_decks > 8:
                 num_decks = 6
             
-            game = BlackjackGame(starting_chips=starting_chips, num_decks=num_decks)
+            dealer_hits_soft_17 = data.get('dealer_hits_soft_17', False)
+            
+            game = BlackjackGame(starting_chips=starting_chips, num_decks=num_decks, dealer_hits_soft_17=dealer_hits_soft_17)
             active_games[game.game_id] = game
         
         game.new_game()
@@ -231,6 +233,29 @@ def split():
         return jsonify({
             'success': result['success'],
             'message': result.get('message', ''),
+            'game_state': game.get_game_state()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@blackjack_bp.route('/surrender', methods=['POST'])
+def surrender():
+    """Player surrenders hand"""
+    try:
+        data = request.get_json() or {}
+        game_id = data.get('game_id')
+        
+        if not game_id:
+            return jsonify({'success': False, 'error': 'Game ID required'}), 400
+        
+        game = get_game(game_id)
+        result = game.surrender()
+        
+        return jsonify({
+            'success': result['success'],
+            'message': result.get('message', ''),
+            'game_over': result.get('game_over', False),
             'game_state': game.get_game_state()
         })
     except Exception as e:
