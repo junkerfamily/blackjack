@@ -1,0 +1,278 @@
+/* Dealer Peek Demo Specific Styles */
+
+body.peek-demo {
+    margin: 0;
+    min-height: 100vh;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: radial-gradient(circle at top, #155238 0%, #041b11 55%, #020b09 100%);
+    color: #f8f7ec;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    padding: 40px 20px;
+    box-sizing: border-box;
+}
+
+.peek-demo .demo-container {
+    width: min(1100px, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+.peek-demo .demo-header {
+    text-align: center;
+}
+
+.peek-demo .demo-header h1 {
+    margin: 0;
+    font-size: clamp(2rem, 4vw, 3.2rem);
+    color: #ffe769;
+}
+
+.peek-demo .demo-header p {
+    margin: 10px auto 0;
+    max-width: 720px;
+    color: rgba(255, 255, 255, 0.85);
+    line-height: 1.6;
+}
+
+.peek-demo .demo-stage {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 24px;
+    padding: 32px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.peek-demo .felt-table {
+    background: radial-gradient(circle at 30% 20%, #1d6b49 0%, #0e4a30 45%, #05311d 100%);
+    border-radius: 24px;
+    padding: 40px 20px 50px;
+    position: relative;
+    box-shadow: inset 0 0 45px rgba(0, 0, 0, 0.6), 0 15px 50px rgba(0, 0, 0, 0.65);
+    border: 2px solid rgba(255, 255, 255, 0.07);
+}
+
+.peek-demo .table-label {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 21, 0.85);
+    padding: 6px 18px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #d6f8d6;
+}
+
+.peek-demo .status-pill {
+    margin: 18px auto 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 18px;
+    background: rgba(10, 26, 19, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.9rem;
+    color: #b4ffbf;
+}
+
+.peek-demo .status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #38ef7d;
+    box-shadow: 0 0 8px #38ef7d;
+}
+
+.peek-demo #demo-dealer-hand {
+    min-height: 150px;
+    justify-content: center;
+    align-items: center;
+    gap: 18px;
+}
+
+.peek-demo #demo-dealer-hand .card {
+    width: 88px;
+    height: 128px;
+    font-size: 1.1em;
+}
+
+.peek-demo #demo-dealer-hand .card.flipped .card-inner {
+    transform-origin: center;
+}
+
+.peek-demo .controls-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    margin-top: 26px;
+}
+
+.peek-demo button {
+    width: 100%;
+    padding: 12px 18px;
+    border-radius: 12px;
+    border: none;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #1b1d1b;
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+    background: linear-gradient(135deg, #ffe769, #ffb347);
+    box-shadow: 0 12px 25px rgba(0, 0, 0, 0.35);
+}
+
+.peek-demo button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+    box-shadow: none;
+}
+
+.peek-demo button:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.45);
+    filter: brightness(1.05);
+}
+
+.peek-demo .secondary {
+    background: linear-gradient(135deg, #98f5e1, #2af598);
+}
+
+.peek-demo .danger {
+    background: linear-gradient(135deg, #ff5f6d, #ffc371);
+}
+
+.peek-demo .info-card {
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    line-height: 1.6;
+}
+
+.peek-demo .info-card ul {
+    margin: 12px 0 14px 20px;
+    padding-left: 12px;
+    color: rgba(255, 255, 255, 0.82);
+}
+
+.peek-demo .info-card li {
+    margin-bottom: 6px;
+}
+
+.peek-demo .info-card strong {
+    color: #ffe769;
+}
+
+.peek-demo .note {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* Peek animation override for demo (bigger lift, scale, glow) */
+
+body.peek-demo .card.peeking {
+    animation: peekDemoCard var(--peek-demo-duration, 1.35s) cubic-bezier(0.22, 0.61, 0.36, 1);
+    box-shadow: 0 18px 45px rgba(255, 241, 153, 0.95), 0 0 35px rgba(255, 255, 255, 0.8);
+    filter: drop-shadow(0 15px 25px rgba(247, 255, 196, 0.55));
+    z-index: 5;
+}
+
+body.peek-demo .card-inner.peeking {
+    animation: peekDemoCardInner var(--peek-demo-duration, 1.35s) cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+body.peek-demo .card.peeking::after {
+    content: '';
+    position: absolute;
+    inset: -12px;
+    border-radius: 16px;
+    border: 2px solid rgba(255, 238, 141, 0.7);
+    box-shadow: 0 0 30px rgba(255, 238, 141, 0.8);
+    opacity: 0;
+    animation: peekGlow var(--peek-demo-duration, 1.35s) ease-in-out;
+}
+
+@keyframes peekDemoCard {
+    0% {
+        transform: translateY(0) rotate(0deg) scale(1);
+    }
+    20% {
+        transform: translateY(-18px) rotate(-4deg) scale(1.04);
+    }
+    45% {
+        transform: translateY(-48px) rotate(-10deg) scale(1.12);
+    }
+    65% {
+        transform: translateY(-34px) rotate(-6deg) scale(1.08);
+    }
+    100% {
+        transform: translateY(0) rotate(0deg) scale(1);
+    }
+}
+
+@keyframes peekDemoCardInner {
+    0% {
+        transform: rotateY(180deg) translateY(0) scale(1);
+    }
+    25% {
+        transform: rotateY(180deg) translateY(-25px) scale(1.04);
+    }
+    55% {
+        transform: rotateY(180deg) translateY(-55px) scale(1.1);
+    }
+    70% {
+        transform: rotateY(180deg) translateY(-38px) scale(1.06);
+    }
+    100% {
+        transform: rotateY(180deg) translateY(0) scale(1);
+    }
+}
+
+@keyframes peekGlow {
+    0% {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    40% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    80% {
+        opacity: 0.35;
+        transform: scale(1.05);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.1);
+    }
+}
+
+@media (max-width: 768px) {
+    body.peek-demo {
+        padding: 24px 12px 40px;
+    }
+    
+    .peek-demo .demo-stage {
+        padding: 24px 18px;
+    }
+    
+    .peek-demo #demo-dealer-hand {
+        flex-wrap: nowrap;
+        gap: 12px;
+    }
+    
+    .peek-demo #demo-dealer-hand .card {
+        width: 74px;
+        height: 105px;
+    }
+}
+

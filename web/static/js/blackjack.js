@@ -47,6 +47,12 @@ class BlackjackGame {
         this.hecklerSpeedDisplay = null;
         this.hecklerTestButton = null;
         this.hecklerSettingsNote = null;
+        this.forceDlrHandInput = null;
+        this.testPeekButton = null;
+        this.isTestingPeek = false;
+        this.peekAnimationDurationMs = 1350;
+        this.activePeekTimeout = null;
+        this.isDealerPeekAnimating = false;
         this.boundOutsideClickHandler = null;
         this.boundEscapeHandler = null;
         this.hecklerSettingsKey = 'blackjack_heckler_settings';
@@ -606,6 +612,8 @@ class BlackjackGame {
             this.dealerDelayInput = document.getElementById('dealer-delay-input');
             this.dealerDelayHelperElement = document.getElementById('dealer-delay-helper');
             this.dealerHitsSoft17Toggle = document.getElementById('dealer-hits-soft17-toggle');
+            this.forceDlrHandInput = document.getElementById('force-dlr-hand-input');
+            this.testPeekButton = document.getElementById('test-peek-btn');
 
             // Only proceed if the essential elements exist
             if (!this.settingsToggle || !this.settingsPanel) {
@@ -691,6 +699,44 @@ class BlackjackGame {
                 });
             } else {
                 console.warn('Dealer hits soft 17 toggle not found in settings panel');
+            }
+
+            if (this.forceDlrHandInput) {
+                const applyForceDlrHandChange = async () => {
+                    const handString = this.forceDlrHandInput.value.trim();
+                    if (!this.gameId) {
+                        this.showMessage('Please start a game first', 'warn');
+                        return;
+                    }
+                    try {
+                        const result = await this.apiCall('/api/force_dealer_hand', 'POST', {
+                            game_id: this.gameId,
+                            hand_string: handString || null
+                        });
+                        if (result.success) {
+                            this.updateGameState(result.game_state);
+                            this.updateTestModeIndicator();
+                            const message = handString 
+                                ? `Test mode: Dealer hand forced to ${handString}` 
+                                : 'Test mode disabled';
+                            this.log(message, 'success');
+                        } else {
+                            this.showMessage(result.message || 'Failed to set forced dealer hand', 'error');
+                        }
+                    } catch (e) {
+                        // Error handled by apiCall
+                    }
+                };
+                this.forceDlrHandInput.addEventListener('change', applyForceDlrHandChange);
+                this.forceDlrHandInput.addEventListener('blur', applyForceDlrHandChange);
+            } else {
+                console.warn('Force dealer hand input not found in settings panel');
+            }
+
+            if (this.testPeekButton) {
+                this.testPeekButton.addEventListener('click', () => this.handleTestPeekAnimation());
+            } else {
+                console.warn('Test peek animation button not found in settings panel');
             }
 
             this.updateBankrollHelper();
@@ -1337,7 +1383,15 @@ class BlackjackGame {
                 decision
             });
             if (result.success) {
+                // If dealer peeked, show peek animation before updating state
+                if (result.dealer_peeked) {
+                    await this.animateDealerPeek();
+                }
                 this.updateGameState(result.game_state);
+                // If game ended due to dealer blackjack, end the round
+                if (result.game_over) {
+                    await this.endGame();
+                }
             } else {
                 this.showMessage(result.error || 'Insurance action failed', 'error');
             }
@@ -1448,6 +1502,18 @@ class BlackjackGame {
                         this.log('⌨️ Hotkey: Insurance (I)', 'action');
                         const decision = insuranceBtn.dataset.decision || 'buy';
                         this.sendInsuranceDecision(decision);
+                    }
+                    break;
+                case 'n':
+                    // Check if "No thanks" button is available
+                    const declineBtn = document.getElementById('insurance-decline');
+                    const declineAvailable = declineBtn && 
+                        declineBtn.style.display !== 'none' &&
+                        this.gameState && 
+                        (this.gameState.insurance_offer_active || this.gameState.even_money_offer_active);
+                    if (declineAvailable) {
+                        this.log('⌨️ Hotkey: No thanks (N)', 'action');
+                        this.sendInsuranceDecision('decline');
                     }
                     break;
                 default:
@@ -1718,6 +1784,183 @@ class BlackjackGame {
     }
 
     /**
+     * Clear current dealer peek animation state
+     */
+    clearDealerPeekAnimation() {
+        if (this.activePeekTimeout) {
+            clearTimeout(this.activePeekTimeout);
+            this.activePeekTimeout = null;
+        }
+        const activePeekElements = document.querySelectorAll('#dealer-hand .peeking');
+        activePeekElements.forEach((el) => el.classList.remove('peeking'));
+        this.isDealerPeekAnimating = false;
+    }
+
+    /**
+     * Animate dealer peeking at hole card
+     * @param {Object} options
+     * @param {boolean} options.allowPlaceholder - Create a placeholder card if needed
+     * @param {string} options.source - For logging context
+     * @returns {Promise} Resolves when animation completes
+     */
+    async animateDealerPeek(options = {}) {
+        const { allowPlaceholder = false, source = 'live' } = options;
+        return new Promise((resolve) => {
+            const dealerHandContainer = document.getElementById('dealer-hand');
+            if (!dealerHandContainer) {
+                console.warn('🎰 No dealer hand container found for peek animation');
+                resolve();
+                return;
+            }
+
+            let holeCard = dealerHandContainer.querySelector('.card.flipped');
+            let cleanupPlaceholder = null;
+
+            if (!holeCard && allowPlaceholder) {
+                holeCard = this.createPeekTestCardElement();
+                dealerHandContainer.prepend(holeCard);
+                cleanupPlaceholder = () => {
+                    if (holeCard && holeCard.parentNode) {
+                        holeCard.parentNode.removeChild(holeCard);
+                    }
+                };
+            }
+
+            if (!holeCard) {
+                console.warn('🎰 No flipped hole card available for peek animation');
+                resolve();
+                return;
+            }
+
+            console.log(`🎰 Animating dealer peek on hole card... (source: ${source})`);
+            
+            const duration = this.peekAnimationDurationMs || 1350;
+            const cssDuration = `${duration}ms`;
+            const cardInner = holeCard.querySelector('.card-inner');
+
+            this.clearDealerPeekAnimation();
+
+            if (cardInner) {
+                cardInner.style.setProperty('--peek-duration', cssDuration);
+            }
+            holeCard.style.setProperty('--peek-duration', cssDuration);
+
+            // Force reflow so the animation restarts
+            void holeCard.offsetWidth;
+
+            holeCard.classList.add('peeking');
+            if (cardInner) {
+                cardInner.classList.add('peeking');
+            }
+
+            this.isDealerPeekAnimating = true;
+
+            this.activePeekTimeout = setTimeout(() => {
+                holeCard.classList.remove('peeking');
+                holeCard.style.removeProperty('--peek-duration');
+                
+                if (cardInner) {
+                    cardInner.classList.remove('peeking');
+                    cardInner.style.removeProperty('--peek-duration');
+                }
+
+                if (cleanupPlaceholder) {
+                    setTimeout(cleanupPlaceholder, 200);
+                }
+
+                this.isDealerPeekAnimating = false;
+                this.activePeekTimeout = null;
+                console.log('🎰 Dealer peek animation complete');
+                resolve();
+            }, duration);
+        });
+    }
+
+    /**
+     * Build a temporary card element to demo the peek animation
+     * without depending on the game state.
+     */
+    createPeekTestCardElement() {
+        const cardDiv = document.createElement('div');
+        cardDiv.className = 'card suit-spades flipped temp-peek-card';
+        cardDiv.dataset.tempPeek = 'true';
+
+        const cardInner = document.createElement('div');
+        cardInner.className = 'card-inner';
+
+        const cardFront = document.createElement('div');
+        cardFront.className = 'card-front';
+
+        const rankTop = document.createElement('div');
+        rankTop.className = 'card-rank-top';
+        rankTop.textContent = 'A';
+
+        const suitDiv = document.createElement('div');
+        suitDiv.className = 'card-suit';
+        suitDiv.textContent = '♠';
+
+        const rankBottom = document.createElement('div');
+        rankBottom.className = 'card-rank-bottom';
+        rankBottom.textContent = 'A';
+
+        cardFront.appendChild(rankTop);
+        cardFront.appendChild(suitDiv);
+        cardFront.appendChild(rankBottom);
+
+        const cardBack = document.createElement('div');
+        cardBack.className = 'card-back';
+        const backPattern = document.createElement('div');
+        backPattern.className = 'card-back-pattern';
+        cardBack.appendChild(backPattern);
+
+        cardInner.appendChild(cardFront);
+        cardInner.appendChild(cardBack);
+        cardDiv.appendChild(cardInner);
+
+        return cardDiv;
+    }
+
+    /**
+     * Handle manual peek animation testing from the settings panel
+     */
+    async handleTestPeekAnimation() {
+        if (this.isTestingPeek) {
+            this.log('Peek animation test already running', 'warn');
+            return;
+        }
+
+        if (this.isDealerPeekAnimating) {
+            this.log('Dealer peek animation already running', 'warn');
+            return;
+        }
+
+        this.isTestingPeek = true;
+        const button = this.testPeekButton || null;
+        const originalLabel = button ? button.textContent : '';
+
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Testing...';
+        }
+
+        this.setActionStatus('testing dealer peek animation', this.peekAnimationDurationMs + 600);
+        this.log('Manual dealer peek animation test triggered', 'action');
+
+        try {
+            await this.animateDealerPeek({ allowPlaceholder: true, source: 'test-button' });
+        } catch (error) {
+            console.error('Dealer peek animation test failed:', error);
+            this.showMessage('Peek animation test failed - see console for details', 'error');
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalLabel;
+            }
+            this.isTestingPeek = false;
+        }
+    }
+
+    /**
      * Start a new game round (preserves balance)
      */
     async newGame() {
@@ -1979,6 +2222,15 @@ class BlackjackGame {
                 this.log('Deal API call successful', 'success');
                 this.updateGameState(result.game_state);
                 this.renderHands();
+                
+                // If dealer peeked (10-value upcard), show peek animation
+                if (result.dealer_peeked) {
+                    await this.animateDealerPeek();
+                    // Update state again after peek animation
+                    await this.updateGameStateFromServer();
+                    this.renderHands();
+                }
+                
                 this.hideBettingArea();
                 this.showGameControls();
                 this.updateButtonStates();
@@ -2743,11 +2995,13 @@ class BlackjackGame {
         // Update cut card display
         this.updateCutCardDisplay();
         
-        // Update table limits display
-        this.updateTableLimitsDisplay();
-        
-        // Update table sign display
-        this.updateTableSign();
+        // Update test mode indicator and input value
+        this.updateTestModeIndicator();
+        if (this.forceDlrHandInput && state.force_dealer_hand) {
+            this.forceDlrHandInput.value = state.force_dealer_hand;
+        } else if (this.forceDlrHandInput && !state.force_dealer_hand) {
+            this.forceDlrHandInput.value = '';
+        }
         
         // Show/hide Log Hand button based on game state
         const logHandBtn = document.getElementById('log-hand-btn');
@@ -2793,6 +3047,21 @@ class BlackjackGame {
         
         // Don't call updateButtonStates() here - it might be called while isProcessing is true
         // Call it explicitly after hideLoading() or when you know isProcessing is false
+    }
+    
+    /**
+     * Update test mode indicator (red dashed border) on dealer area
+     */
+    updateTestModeIndicator() {
+        const dealerArea = document.querySelector('.dealer-area');
+        if (!dealerArea) return;
+        
+        const isTestMode = this.gameState?.force_dealer_hand && this.gameState.force_dealer_hand.trim();
+        if (isTestMode) {
+            dealerArea.classList.add('test-mode');
+        } else {
+            dealerArea.classList.remove('test-mode');
+        }
     }
 
     updateInsuranceUI() {

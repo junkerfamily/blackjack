@@ -134,6 +134,8 @@ def deal():
             return jsonify({
                 'success': True,
                 'message': result['message'],
+                'game_over': result.get('game_over', False),
+                'dealer_peeked': result.get('dealer_peeked', False),
                 'game_state': game.get_game_state()
             })
         else:
@@ -300,6 +302,7 @@ def insurance():
             'success': result.get('success', False),
             'message': result.get('message', ''),
             'game_over': result.get('game_over', False),
+            'dealer_peeked': result.get('dealer_peeked', False),
             'game_state': game.get_game_state()
         }), status
     except Exception as e:
@@ -503,5 +506,28 @@ def clear_log_hand():
     except Exception as e:
         import traceback
         traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@blackjack_bp.route('/force_dealer_hand', methods=['POST'])
+def force_dealer_hand():
+    """Set or clear forced dealer hand for testing"""
+    try:
+        data = request.get_json() or {}
+        game_id = data.get('game_id')
+        hand_string = data.get('hand_string')  # Format: "rank1,rank2" or None/empty
+        
+        if not game_id:
+            return jsonify({'success': False, 'error': 'Game ID required'}), 400
+        
+        game = get_game(game_id)
+        result = game.set_force_dealer_hand(hand_string)
+        
+        return jsonify({
+            'success': result.get('success', False),
+            'message': result.get('message', ''),
+            'game_state': game.get_game_state()
+        })
+    except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

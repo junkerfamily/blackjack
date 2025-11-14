@@ -18,16 +18,17 @@
 - **Re-Split Limit (4 Hands Max)** - Allow up to 4 split hands
 - **Double After Split (DAS)** - Permit double down after splits
 - **Surrender (Late)** - Forfeit hand before taking any actions and recover 50% of bet
+- **Table Min/Max Limits** - Displayed on table sign and enforced in betting logic
+- **Dealer Hits Soft 17 Toggle** - Configurable rule (H17 vs S17) available in settings panel
 
 ### To Add
 
 | Feature | Complexity | Priority | Notes |
 |---------|-----------|----------|-------|
-| **Table Min/Max Limits** | Low | 2 | Display and enforce realistic casino table limits - essential for realism |
-| **Dealer Hits Soft 17 Option** | Low | 3 | Toggle rule between S17 and H17 - simple config option |
-| **Rebet / Repeat Bet Button** | Low | 3 | Allow rebetting last wager easily - UX improvement |
 | **Cut Card Penetration Simulation** | Medium | 3 | Trigger reshuffle when cut card reached - already have reshuffle logic |
 | **Multiple Player Hands (3 Seats)** | High | 4 | Allow player to play multiple hands per round - major feature |
+
+> _Note:_ Rebet / repeat bet UI is unnecessary—the app already remembers and reuses the most recent wager automatically.
 
 ---
 
@@ -36,10 +37,12 @@
 | Feature | Complexity | Priority | Notes |
 |---------|-----------|----------|-------|
 | **Side Bets (Perfect Pairs, 21+3)** | High | 4 | Add popular side bets with correct payouts - new betting system required |
-| **Dealer Peek Animation** | Medium | 4 | Add authentic dealer peek for Ace or 10 upcard - animation work |
 | **Shoe Cut Card Display** | Low | 4 | Visually show cut card before reshuffle - visual enhancement |
 | **Table Sign Display** | Low | 4 | Show casino signage with rules (e.g., Blackjack pays 3:2) - visual element |
 | **Burn Card After Shuffle** | Low | 5 | Burn one card after shuffle - minor rule, low impact |
+
+### Completed Optional Variants
+- **Dealer Peek Animation** – Implemented with standalone demo sandbox and integrated lift/glow effect (Nov 2025)
 
 ---
 
@@ -61,17 +64,14 @@
 *None - all critical features are already implemented*
 
 ### Priority 2 (High Priority)
-- Table Min/Max Limits
+-*None - currently no outstanding items*
 
 ### Priority 3 (Medium Priority)
-- Dealer Hits Soft 17 Option
-- Rebet / Repeat Bet Button
 - Cut Card Penetration Simulation
 
 ### Priority 4 (Low Priority)
 - Multiple Player Hands (3 Seats)
 - Side Bets (Perfect Pairs, 21+3)
-- Dealer Peek Animation
 - Shoe Cut Card Display
 - Table Sign Display
 
@@ -87,15 +87,11 @@
 
 ## Implementation Order Recommendation
 
-1. **Table Min/Max Limits** (Priority 2, Low Complexity) - Quick win for authenticity
-2. **Rebet / Repeat Bet Button** (Priority 3, Low Complexity) - Easy UX improvement
-3. **Dealer Hits Soft 17 Option** (Priority 3, Low Complexity) - Simple toggle
-4. **Cut Card Penetration Simulation** (Priority 3, Medium Complexity) - Enhance existing reshuffle
-5. **Shoe Cut Card Display** (Priority 4, Low Complexity) - Visual polish
-6. **Table Sign Display** (Priority 4, Low Complexity) - Visual enhancement
-7. **Dealer Peek Animation** (Priority 4, Medium Complexity) - Animation work
-8. **Multiple Player Hands** (Priority 4, High Complexity) - Major feature
-9. **Side Bets** (Priority 4, High Complexity) - Complex betting system
-10. **Future Considerations** (Priority 5) - All optional enhancements
+1. **Cut Card Penetration Simulation** (Priority 3, Medium Complexity) - Enhance existing reshuffle
+2. **Shoe Cut Card Display** (Priority 4, Low Complexity) - Visual polish
+3. **Table Sign Display** (Priority 4, Low Complexity) - Visual enhancement
+4. **Multiple Player Hands** (Priority 4, High Complexity) - Major feature
+5. **Side Bets** (Priority 4, High Complexity) - Complex betting system
+6. **Future Considerations** (Priority 5) - All optional enhancements
 
 

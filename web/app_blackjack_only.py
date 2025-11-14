@@ -44,6 +44,11 @@ def cards_test():
     """Test page for blackjack card rendering"""
     return render_template('cards_test.html')
 
+@app.route('/dealer-peek-demo')
+def dealer_peek_demo():
+    """Standalone page to showcase the dealer peek animation"""
+    return render_template('peek_demo.html')
+
 @app.route('/health')
 def health():
     """Health check endpoint"""
@@ -86,6 +91,7 @@ if __name__ == '__main__':
     print(f"\n🚀 Blackjack server starting on port {port}")
     print(f"📍 Game: http://localhost:{port}/blackjack")
     print(f"📍 Card test: http://localhost:{port}/cards-test")
+    print(f"📍 Dealer peek demo: http://localhost:{port}/dealer-peek-demo")
     if debug_mode:
         print(f"\nPress Ctrl+C to stop the server\n")
     

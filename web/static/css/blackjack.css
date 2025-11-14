@@ -712,6 +712,26 @@ body {
 }
 
 /* Dealer Area */
+/* Test mode indicator - red dashed border when dealer hand is forced */
+.dealer-area.test-mode {
+    border: 3px dashed #ff4444;
+    border-radius: 12px;
+    padding: 8px;
+    background: rgba(255, 68, 68, 0.1);
+    animation: testModePulse 2s ease-in-out infinite;
+}
+
+@keyframes testModePulse {
+    0%, 100% {
+        border-color: #ff4444;
+        background: rgba(255, 68, 68, 0.1);
+    }
+    50% {
+        border-color: #ff8888;
+        background: rgba(255, 68, 68, 0.15);
+    }
+}
+
 .dealer-area {
     text-align: center;
     padding: 14px;

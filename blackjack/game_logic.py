@@ -7,7 +7,7 @@ import os
 import copy
 import traceback
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from blackjack.deck import Deck, Card, calculate_hand_value, is_blackjack
 from blackjack.player import Player, Hand
 from blackjack.dealer import Dealer
@@ -59,6 +59,11 @@ class BlackjackGame:
         self.round_history: list = []
         self.current_round_audit: Optional[Dict[str, Any]] = None
         self.round_counter: int = 0
+        # Dealer peek state
+        self.dealer_peeked: bool = False
+        # Test mode: forced dealer hand (format: "rank1,rank2" e.g., "10,A" or "A,10")
+        self.force_dealer_hand: Optional[str] = None
+        self._pending_forced_dealer_cards: Optional[Tuple[Card, Card]] = None
 
     # ------------------------------------------------------------
     # Round auditing helpers
@@ -185,6 +190,9 @@ class BlackjackGame:
         self.even_money_offer_active = False
         self.insurance_outcome = None
         self.split_summary = None
+        # Reset dealer peek state and forced-card cache
+        self.dealer_peeked = False
+        self._pending_forced_dealer_cards = None
         if not preserve_auto:
             self.auto_mode_active = False
             self.auto_hands_remaining = 0
@@ -239,6 +247,138 @@ class BlackjackGame:
         else:
             return {'success': False, 'message': 'Failed to place bet'}
     
+    def _should_dealer_peek(self) -> bool:
+        """Check if dealer should peek at hole card (Ace or 10-value upcard)."""
+        if len(self.dealer.hand) < 2:
+            return False
+        # Dealer's upcard is the second card (index 1)
+        upcard = self.dealer.hand[1]
+        # Peek if upcard is Ace or 10-value (10, J, Q, K)
+        return upcard.rank == 'A' or upcard.is_ten_value()
+    
+    def _force_dealer_hand(self) -> bool:
+        """
+        Force dealer to receive specific cards based on force_dealer_hand setting.
+        Format: "rank1,rank2" where rank1 is hole card, rank2 is upcard.
+        Example: "10,A" means 10-value hole card + Ace upcard.
+        
+        Returns:
+            True if forced successfully, False otherwise
+        """
+        if not self.force_dealer_hand or not self.force_dealer_hand.strip():
+            self._pending_forced_dealer_cards = None
+            return False
+        
+        try:
+            # Parse the forced hand (format: "rank1,rank2")
+            parts = [p.strip().upper() for p in self.force_dealer_hand.split(',')]
+            if len(parts) != 2:
+                return False
+            
+            hole_rank, upcard_rank = parts
+            
+            # Normalize rank format (handle "10" vs "T", etc.)
+            rank_map = {'T': '10'}
+            hole_rank = rank_map.get(hole_rank, hole_rank)
+            upcard_rank = rank_map.get(upcard_rank, upcard_rank)
+            
+            # Find cards matching these ranks in the deck
+            hole_card = None
+            upcard_card = None
+            
+            # Search deck for hole card
+            for i, card in enumerate(self.deck.cards):
+                if card.rank == hole_rank:
+                    hole_card = self.deck.cards.pop(i)
+                    break
+            
+            # Search deck for upcard (must be different card)
+            for i, card in enumerate(self.deck.cards):
+                if card.rank == upcard_rank:
+                    upcard_card = self.deck.cards.pop(i)
+                    break
+            
+            if not hole_card or not upcard_card:
+                # Couldn't find matching cards - reset and return False
+                if hole_card:
+                    self.deck.cards.append(hole_card)
+                if upcard_card:
+                    self.deck.cards.append(upcard_card)
+                self._pending_forced_dealer_cards = None
+                return False
+            
+            # Store cards to be dealt to the dealer explicitly (we already removed them from deck)
+            self._pending_forced_dealer_cards = (hole_card, upcard_card)
+            
+            import sys
+            print(f"🧪 TEST MODE: Forcing dealer hand - hole: {hole_card}, upcard: {upcard_card}")
+            sys.stdout.flush()
+            
+            return True
+            
+        except Exception as e:
+            import sys
+            print(f"⚠️ Error forcing dealer hand: {e}")
+            sys.stdout.flush()
+            self._pending_forced_dealer_cards = None
+            return False
+    
+    def _dealer_peek_and_check_blackjack(self) -> Dict[str, Any]:
+        """
+        Dealer peeks at hole card and checks for blackjack.
+        If dealer has blackjack, reveal immediately and end round.
+        Returns dict with peek status and whether game ended.
+        """
+        if not self._should_dealer_peek():
+            return {'peeked': False, 'game_over': False}
+        
+        if self.dealer_peeked:
+            # Already peeked, don't peek again
+            return {'peeked': False, 'game_over': False}
+        
+        # Mark as peeked
+        self.dealer_peeked = True
+        
+        # Peek: reveal hole card to check for blackjack
+        self.dealer.reveal_hole_card()
+        self._record_round_event('dealer_peeked', {})
+        
+        # Check if dealer has blackjack
+        if self.dealer.is_blackjack():
+            # Dealer has blackjack - end round immediately
+            self.state = GameState.GAME_OVER
+            
+            # Process all player hands as losses (unless player also has blackjack)
+            for i, hand in enumerate(self.player.hands):
+                if hand.is_blackjack():
+                    # Player also has blackjack - push
+                    self.player.push(i)
+                    if not self.result:
+                        self.result = "push"
+                else:
+                    # Player loses
+                    self.player.lose(i)
+                    if not self.result:
+                        self.result = "loss"
+            
+            # Resolve insurance if taken
+            if self.insurance_taken:
+                # Pay 2:1 on insurance; stake already deducted -> add 3x stake
+                self.player.chips += self.insurance_amount * 3
+                self.insurance_outcome = {
+                    'paid': True,
+                    'amount': self.insurance_amount * 2
+                }
+                import sys
+                print(f"🛡️ Insurance paid ${self.insurance_amount * 2} (2:1)")
+                sys.stdout.flush()
+            
+            self._finalize_round_audit()
+            return {'peeked': True, 'game_over': True, 'dealer_blackjack': True}
+        
+        # Dealer doesn't have blackjack - continue game
+        return {'peeked': True, 'game_over': False, 'dealer_blackjack': False}
+    
     def deal_initial_cards(self) -> Dict[str, Any]:
         """
         Deal initial cards to player and dealer.
@@ -256,13 +396,26 @@ class BlackjackGame:
         # Deal cards: player, dealer, player, dealer
         self.state = GameState.DEALING
         
+        # Prepare forced dealer hand if configured
+        if self.force_dealer_hand and not self._pending_forced_dealer_cards:
+            self._force_dealer_hand()
+        
+        # If forced dealer hand is set, stack the deck
+        if self.force_dealer_hand:
+            self._force_dealer_hand()
+        
         # Deal two cards to player
         player_cards = self.deck.deal_cards(2)
         current_hand.add_cards(player_cards)
         
         # Deal two cards to dealer (hole card stays hidden)
-        dealer_cards = self.deck.deal_cards(2)
-        self.dealer.add_cards(dealer_cards)
+        if self._pending_forced_dealer_cards:
+            hole_card, upcard_card = self._pending_forced_dealer_cards
+            self.dealer.add_cards([hole_card, upcard_card])
+            self._pending_forced_dealer_cards = None
+        else:
+            dealer_cards = self.deck.deal_cards(2)
+            self.dealer.add_cards(dealer_cards)
         
         # Check for player blackjack (player wins immediately only if dealer doesn't have blackjack)
         if self.player.get_current_hand().is_blackjack():
@@ -306,6 +459,19 @@ class BlackjackGame:
                         'insurance_amount': self.insurance_amount,
                         'hand_index': self.player.current_hand_index
                     })
+            # PEEK: If dealer shows 10-value (no insurance), peek immediately
+            elif self._should_dealer_peek():
+                # Dealer shows 10-value - peek immediately to check for blackjack
+                peek_result = self._dealer_peek_and_check_blackjack()
+                if peek_result.get('game_over'):
+                    # Dealer has blackjack - round ended
+                    self._capture_initial_hands()
+                    self._record_round_event('initial_deal', {
+                        'player_cards': self.current_round_audit.get('player_initial_cards') if self.current_round_audit else [],
+                        'dealer_cards': self.current_round_audit.get('dealer_initial_cards') if self.current_round_audit else []
+                    })
+                    self._finalize_round_audit()
+                    return {'success': True, 'message': 'Cards dealt - dealer blackjack', 'game_over': True, 'dealer_peeked': True}
         
         self._capture_initial_hands()
         self._record_round_event('initial_deal', {
@@ -774,6 +940,8 @@ class BlackjackGame:
             'even_money_offer_active': self.even_money_offer_active,
             'insurance_outcome': self.insurance_outcome,
             'split_summary': getattr(self, 'split_summary', None),
+            'dealer_peeked': self.dealer_peeked,
+            'force_dealer_hand': self.force_dealer_hand,
             'has_completed_round': len(self.round_history) > 0,
             'latest_round_id': latest_round_id,
             'auto_mode': {
@@ -785,6 +953,44 @@ class BlackjackGame:
                 'log_filename': self.auto_mode_log_filename if not self.auto_mode_active and self.auto_mode_log_filename else None
             }
         }
+    
+    def set_force_dealer_hand(self, hand_string: Optional[str]) -> Dict[str, Any]:
+        """
+        Set or clear the forced dealer hand for testing.
+        
+        Args:
+            hand_string: Format "rank1,rank2" (e.g., "10,A" or "A,10") or None/empty to disable
+            
+        Returns:
+            Dict with success status
+        """
+        if hand_string and hand_string.strip():
+            # Validate format
+            parts = [p.strip().upper() for p in hand_string.split(',')]
+            if len(parts) != 2:
+                return {'success': False, 'message': 'Invalid format. Use "rank1,rank2" (e.g., "10,A")'}
+            
+            # Validate ranks
+            valid_ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
+            rank_map = {'T': '10'}
+            parts = [rank_map.get(p, p) for p in parts]
+            
+            if parts[0] not in valid_ranks or parts[1] not in valid_ranks:
+                return {'success': False, 'message': 'Invalid rank. Use A, 2-10, J, Q, K'}
+            
+            self.force_dealer_hand = hand_string.strip()
+            import sys
+            print(f"🧪 TEST MODE: Force dealer hand set to: {self.force_dealer_hand}")
+            sys.stdout.flush()
+        else:
+            self.force_dealer_hand = None
+            import sys
+            print("🧪 TEST MODE: Force dealer hand disabled")
+            sys.stdout.flush()
+        
+        # Clear any pending forced cards; they will be regenerated on next deal
+        self._pending_forced_dealer_cards = None
+        return {'success': True, 'message': 'Force dealer hand updated'}
 
     def insurance_decision(self, decision: str) -> Dict[str, Any]:
         """Handle insurance/even-money decisions."""
@@ -841,7 +1047,11 @@ class BlackjackGame:
                     'insurance_taken': True,
                     'insurance_declined': False
                 })
-                return {'success': True, 'message': 'Insurance purchased'}
+                # After insurance decision, dealer peeks at hole card
+                peek_result = self._dealer_peek_and_check_blackjack()
+                if peek_result.get('game_over'):
+                    return {'success': True, 'message': 'Insurance purchased - dealer blackjack', 'game_over': True, 'dealer_peeked': True}
+                return {'success': True, 'message': 'Insurance purchased', 'dealer_peeked': True}
             elif decision == 'decline':
                 self.insurance_offer_active = False
                 self.insurance_taken = False
@@ -850,7 +1060,11 @@ class BlackjackGame:
                     'insurance_taken': False,
                     'insurance_declined': True
                 })
-                return {'success': True, 'message': 'Insurance declined'}
+                # After insurance decision, dealer peeks at hole card
+                peek_result = self._dealer_peek_and_check_blackjack()
+                if peek_result.get('game_over'):
+                    return {'success': True, 'message': 'Insurance declined - dealer blackjack', 'game_over': True, 'dealer_peeked': True}
+                return {'success': True, 'message': 'Insurance declined', 'dealer_peeked': True}
             else:
                 return {'success': False, 'message': 'Invalid decision'}
 

@@ -13,6 +13,7 @@
 - 5 Card Charlie rule (automatic win with 5 cards without busting)
 - Blackjack pays 3:2
 - Dealer must hit on 16 or less, stand on 17 or more
+- Dealer Hits Soft 17 option (configurable - dealer can hit on Ace-6)
 - Push (tie) returns bet
 - Ace value automatically adjusts (1 or 11)
 
@@ -22,6 +23,8 @@
 - Bankroll refresh option
 - Bet amount display and clear bet button
 - Balance tracking with win/loss amounts displayed
+- Table min/max bet limits (configurable, default $5-$500)
+- Dynamic chip button enabling/disabling based on limits and balance
 
 ## User Interface
 - Casino-themed green felt table design
@@ -29,11 +32,14 @@
 - Real-time hand value display
 - Game history panel (last 5 rounds)
 - Rules panel with basic, advanced, shortcuts, and casino info pages
-- Settings panel (Config) for voice, bankroll, and dealer delay
+- Settings panel (Config) for voice, bankroll, dealer delay, and dealer rules
 - Keyboard shortcuts (D=Deal, H=Hit, S=Stand, R=Surrender, I=Insurance, 1=$100 bet, 5=$500 bet)
 - Responsive design for mobile and desktop
 - Loading overlays and status messages
 - Blackjack celebration animation
+- Shoe cut card display showing remaining cards and reshuffle warning
+- Table sign display at bottom showing casino rules (Blackjack pays 3:2, dealer rules, table limits)
+- Table sign with marquee scrolling for long content
 
 ## Voice Commentary
 - Optional voice commentary ("heckler") with speech synthesis
@@ -41,6 +47,10 @@
 - Adjustable speech rate
 - Voice test feature
 - Context-aware phrases for bad plays
+- Heckler comments when hitting on hard 17+
+- Heckler comments when hitting against dealer bust cards (2-6)
+- Heckler comments when hitting on soft 19+
+- Heckler comments when standing with 11 or less
 
 ## Auto Mode
 - Automated gameplay with configurable bet amount

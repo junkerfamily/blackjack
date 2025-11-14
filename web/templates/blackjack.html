@@ -192,6 +192,18 @@
                     <span class="settings-helper">When enabled, dealer hits on Ace-6 (soft 17). Default: dealer stands on all 17s.</span>
                 </div>
                 <div class="settings-row">
+                    <label for="force-dlr-hand-input" class="settings-label">Force DLR Hand (TEST)</label>
+                    <input type="text" id="force-dlr-hand-input" class="settings-input" placeholder="e.g., 10,A or A,10" maxlength="10">
+                    <span class="settings-helper">Format: "rank1,rank2" (e.g., "10,A" = 10 hole + A upcard). Leave empty to disable.</span>
+                </div>
+                <div class="settings-row">
+                    <span class="settings-label">Dealer Peek</span>
+                    <div style="display: flex; flex-direction: column; gap: 6px; flex: 1;">
+                        <button type="button" id="test-peek-btn" class="btn-secondary" style="align-self: flex-start;">Test Animation</button>
+                        <span class="settings-helper">Instantly plays the peek animation so you can confirm the visuals.</span>
+                    </div>
+                </div>
+                <div class="settings-row">
                     <span class="settings-label">Hand Log</span>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <a href="#" id="download-log-hand-link" class="btn-secondary" style="text-decoration: none; display: inline-block; padding: 8px 16px;">Download LogHand.log</a>

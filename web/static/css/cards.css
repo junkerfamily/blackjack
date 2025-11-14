@@ -132,6 +132,90 @@
     animation: dealCard 0.5s ease-out forwards;
 }
 
+/* Peek animation - dramatic lift/glow used in main game */
+@keyframes peekCard {
+    0% {
+        transform: translateY(0) rotate(0deg) scale(1);
+    }
+    20% {
+        transform: translateY(-18px) rotate(-4deg) scale(1.04);
+    }
+    45% {
+        transform: translateY(-45px) rotate(-9deg) scale(1.11);
+    }
+    65% {
+        transform: translateY(-32px) rotate(-6deg) scale(1.07);
+    }
+    100% {
+        transform: translateY(0) rotate(0deg) scale(1);
+    }
+}
+
+@keyframes peekCardInner {
+    0% {
+        transform: rotateY(180deg) translateY(0) scale(1);
+    }
+    25% {
+        transform: rotateY(180deg) translateY(-24px) scale(1.04);
+    }
+    55% {
+        transform: rotateY(180deg) translateY(-52px) scale(1.09);
+    }
+    70% {
+        transform: rotateY(180deg) translateY(-35px) scale(1.05);
+    }
+    100% {
+        transform: rotateY(180deg) translateY(0) scale(1);
+    }
+}
+
+@keyframes peekGlow {
+    0% {
+        opacity: 0;
+        transform: scale(0.92);
+    }
+    35% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    80% {
+        opacity: 0.4;
+        transform: scale(1.06);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.12);
+    }
+}
+
+.card.peeking {
+    animation: peekCard var(--peek-duration, 1.35s) cubic-bezier(0.22, 0.61, 0.36, 1);
+    box-shadow: 0 18px 45px rgba(255, 241, 153, 0.95), 0 0 28px rgba(255, 255, 225, 0.65);
+    filter: drop-shadow(0 15px 25px rgba(247, 255, 196, 0.45));
+    z-index: 5;
+}
+
+.card.peeking::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    border-radius: 16px;
+    border: 2px solid rgba(255, 238, 141, 0.6);
+    box-shadow: 0 0 25px rgba(255, 238, 141, 0.75);
+    opacity: 0;
+    animation: peekGlow var(--peek-duration, 1.35s) ease-in-out;
+}
+
+.card-inner.peeking {
+    animation: peekCardInner var(--peek-duration, 1.35s) cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.card.temp-peek-card {
+    pointer-events: none;
+    margin-right: 12px;
+    z-index: 5;
+}
+
 /* Flip animation */
 @keyframes flipCard {
     0% {

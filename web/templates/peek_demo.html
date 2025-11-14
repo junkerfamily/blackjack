@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dealer Peek Animation Demo</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cards.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/peek_demo.css') }}">
+</head>
+<body class="peek-demo">
+    <main class="demo-container">
+        <header class="demo-header">
+            <h1>Dealer Peek Animation Demo</h1>
+            <p>
+                This sandbox isolates the dealer peek animation so you can preview the lift, scale, and glow effect without running a full game.
+                Deal a peekable hand (Ace or 10-value upcard), trigger the animation, and adjust scenarios at will.
+            </p>
+        </header>
+
+        <section class="demo-stage">
+            <div class="felt-table">
+                <span class="table-label">Dealer Hand</span>
+                <div id="demo-dealer-hand" class="card-hand"></div>
+                <div class="status-pill">
+                    <span id="status-indicator" class="status-indicator"></span>
+                    <span id="status-text">Loading dealer hand…</span>
+                </div>
+            </div>
+
+            <div class="controls-grid">
+                <button id="btn-upcard-ace">Deal Ace Upcard</button>
+                <button id="btn-upcard-ten" class="secondary">Deal 10-Value Upcard</button>
+                <button id="btn-force-blackjack" class="secondary">Force Blackjack (A + 10)</button>
+                <button id="btn-peek">Animate Dealer Peek</button>
+                <button id="btn-reveal" class="secondary">Reveal Hole Card</button>
+                <button id="btn-reset" class="danger">Reset Demo</button>
+            </div>
+        </section>
+
+        <section class="info-card">
+            <strong>How it works:</strong>
+            <ul>
+                <li>The hidden hole card stays face-down until you trigger the peek or reveal actions.</li>
+                <li>“Animate Dealer Peek” replays the amplified lift animation (≈1.4s) with glow and scale effects.</li>
+                <li>Use “Force Blackjack” to guarantee an Ace/10 combination for quick visual testing.</li>
+                <li>This page is standalone—the main blackjack flow is untouched.</li>
+            </ul>
+            <p class="note">Tip: Open DevTools to tweak CSS variables or copy this effect into other prototypes.</p>
+        </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/card.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/peek_demo.js') }}"></script>
+</body>
+</html>
+
