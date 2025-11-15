@@ -2820,7 +2820,4 @@ let rulesPanel = {
     }
 };
 
-// Initialize rules panel when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    rulesPanel.init();
-});
+export { BlackjackGame, rulesPanel };
