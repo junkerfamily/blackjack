@@ -1582,6 +1582,42 @@ button:disabled {
     display: none;
 }
 
+/* Hide dealer and player areas when Auto Mode panel is open */
+.primary-column.auto-mode-panel-open .dealer-area,
+.primary-column.auto-mode-panel-open .player-area,
+.primary-column.auto-mode-panel-open .insurance-offer {
+    display: none;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+/* Position Auto Mode panel to overlay dealer area when open */
+.primary-column.auto-mode-panel-open {
+    position: relative;
+}
+
+.primary-column.auto-mode-panel-open .auto-mode-panel {
+    position: static;
+    display: block;
+    z-index: 10;
+    margin-top: 0;
+    margin-bottom: 16px;
+    order: -1;
+}
+
+.primary-column.auto-mode-panel-open .auto-mode-card {
+    max-width: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 2px solid rgba(255, 215, 0, 0.4);
+    border-radius: 15px;
+    min-height: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
 .auto-mode-card {
     background: rgba(0, 0, 0, 0.45);
     border: 1px solid rgba(255, 215, 0, 0.3);

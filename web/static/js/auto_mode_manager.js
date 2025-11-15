@@ -44,6 +44,12 @@ export class AutoModeManager {
         this.panelVisible = true;
         this.panel.style.display = 'block';
         this.prefillForm();
+        
+        // Add class to primary-column to hide dealer/player areas and position panel overlay
+        const primaryColumn = document.querySelector('.primary-column');
+        if (primaryColumn) {
+            primaryColumn.classList.add('auto-mode-panel-open');
+        }
     }
 
     closePanel() {
@@ -52,6 +58,12 @@ export class AutoModeManager {
         this.panel.style.display = 'none';
         if (this.errorEl) {
             this.errorEl.textContent = '';
+        }
+        
+        // Remove class from primary-column to restore dealer/player areas
+        const primaryColumn = document.querySelector('.primary-column');
+        if (primaryColumn) {
+            primaryColumn.classList.remove('auto-mode-panel-open');
         }
     }
 

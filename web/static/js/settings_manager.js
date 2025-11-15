@@ -591,6 +591,12 @@ export class SettingsManager {
         this.game.autoPanelVisible = true;
         panel.style.display = 'block';
         this.prefillAutoModeForm();
+
+        // Hide dealer/player areas and move panel into their space
+        const primaryColumn = document.querySelector('.primary-column');
+        if (primaryColumn) {
+            primaryColumn.classList.add('auto-mode-panel-open');
+        }
     }
 
     closeAutoModePanel() {
@@ -600,6 +606,12 @@ export class SettingsManager {
         panel.style.display = 'none';
         const errorEl = document.getElementById('auto-error');
         if (errorEl) errorEl.textContent = '';
+
+        // Restore original layout when panel closes
+        const primaryColumn = document.querySelector('.primary-column');
+        if (primaryColumn) {
+            primaryColumn.classList.remove('auto-mode-panel-open');
+        }
     }
 }
 
