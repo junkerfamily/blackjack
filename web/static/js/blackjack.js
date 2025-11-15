@@ -101,15 +101,14 @@ class BlackjackGame {
             ]
         };
         this.useSpeechSynthesis = typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
-        this.settingsManager = options.settingsManager || new SettingsManager(this);
-        if (this.useSpeechSynthesis) {
-            this.settingsManager.setupHecklerVoices();
-        }
-        this.ui = options.uiController || new UIController(this);
+        // UI, SettingsManager, APIClient, and AutoManager are initialized by main.js
+        // Don't create them here to avoid circular dependencies
+        this.ui = null;
+        this.settingsManager = null;
         this.apiClient = options.apiClient || new ApiClient({
-            onMessage: (text, type) => this.ui.showMessage(text, type)
+            onMessage: () => {} // Will be updated in main.js when UI is ready
         });
-        this.autoManager = options.autoManager || new AutoModeManager(this);
+        this.autoManager = null;
         // Don't call init() here - it's async and will be called separately
     }
 
@@ -876,9 +875,8 @@ class BlackjackGame {
      * Setup chip selection handlers
      */
     setupChipSelection() {
-        // Load default bet from localStorage
-        this.loadDefaultBet();
-        
+        // Default bet is already loaded from localStorage in constructor
+        // Just update the visual display
         document.querySelectorAll('.chip').forEach(chip => {
             chip.addEventListener('click', (e) => {
                 const value = parseInt(e.currentTarget.dataset.value);
@@ -2596,22 +2594,8 @@ class BlackjackGame {
 }
 
 // Global game instance
+// NOTE: This will be set by main.js during module initialization
 let game = null;
-
-// Initialize game when page loads
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        game = new BlackjackGame();
-        await game.init();
-    } catch (error) {
-        console.error('Failed to initialize Blackjack game:', error);
-        const messageEl = document.getElementById('game-message');
-        if (messageEl) {
-            messageEl.textContent = 'Failed to load game. Please check the console and refresh.';
-            messageEl.style.color = '#dc3545';
-        }
-    }
-});
 
 // Global functions for button onclick handlers
 function selectChip(value) {

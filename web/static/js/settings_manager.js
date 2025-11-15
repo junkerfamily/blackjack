@@ -262,8 +262,8 @@ export class SettingsManager {
                 console.warn('Test peek animation button not found in settings panel');
             }
 
-            game.updateBankrollHelper();
-            game.updateDealerDelayHelper();
+            game.ui.updateBankrollHelper();
+            game.ui.updateDealerDelayHelper();
 
             if (game.hecklerEnabledToggle) {
                 game.hecklerEnabledToggle.checked = game.voiceEnabled;

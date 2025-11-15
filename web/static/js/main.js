@@ -10,6 +10,7 @@ import { ApiClient } from './api_client.js';
 import { GameStateManager } from './game_state.js';
 import { UIController } from './ui_controller.js';
 import { SettingsManager } from './settings_manager.js';
+import { AutoModeManager } from './auto_mode_manager.js';
 
 /**
  * Initialize the game when the DOM is ready
@@ -33,12 +34,75 @@ function initializeGame() {
         stateManager
     });
 
-    // Now that the game instance exists, create UI and settings managers with the game reference
+    // Now that the game instance exists, create UI and manager modules with the game reference
     game.ui = new UIController(game);
     game.settingsManager = new SettingsManager(game);
+    game.autoManager = new AutoModeManager(game);
+
+    // Setup heckler voices if speech synthesis is available
+    if (game.useSpeechSynthesis) {
+        game.settingsManager.setupHecklerVoices();
+    }
 
     // Update API client's message handler to use UI
     apiClient.onMessage = (text, type) => game.ui.showMessage(text, type);
+
+    // Make the game instance available globally for onclick handlers in HTML
+    // This allows the HTML template to use inline onclick handlers like onclick="dealCards()"
+    window.game = game;
+
+    // Expose global functions for inline onclick handlers
+    window.selectChip = (value) => {
+        if (window.game) {
+            window.game.selectChip(value);
+            window.game.addToBet(value);
+        }
+    };
+    window.clearBet = () => {
+        if (window.game) {
+            window.game.clearBet();
+        }
+    };
+    window.dealCards = () => {
+        if (window.game) {
+            window.game.dealCards();
+        }
+    };
+    window.playerHit = () => {
+        if (window.game) {
+            window.game.playerHit();
+        }
+    };
+    window.playerStand = () => {
+        if (window.game) {
+            window.game.playerStand();
+        }
+    };
+    window.playerDoubleDown = () => {
+        if (window.game) {
+            window.game.playerDoubleDown();
+        }
+    };
+    window.playerSplit = () => {
+        if (window.game) {
+            window.game.playerSplit();
+        }
+    };
+    window.playerSurrender = () => {
+        if (window.game) {
+            window.game.playerSurrender();
+        }
+    };
+    window.newGame = () => {
+        if (window.game) {
+            window.game.newGame();
+        }
+    };
+    window.refreshBankroll = () => {
+        if (window.game) {
+            window.game.refreshBankroll();
+        }
+    };
 
     // Initialize the game
     game.init();

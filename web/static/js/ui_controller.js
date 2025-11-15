@@ -22,7 +22,7 @@ export class UIController {
             overlay.style.display = 'none';
         }
         this.game.isProcessing = false;
-        this.game.updateButtonStates();
+        this.updateButtonStates();
     }
 
     setButtonsEnabled(enabled) {
