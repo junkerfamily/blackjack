@@ -1,10 +1,16 @@
+import { ApiClient } from './api_client.js';
+import { GameStateManager } from './game_state.js';
+import { UIController } from './ui_controller.js';
+import { SettingsManager } from './settings_manager.js';
+import { AutoModeManager } from './auto_mode_manager.js';
+
 /**
  * Blackjack Game UI Logic
  * Handles game state, API calls, and UI updates
  */
 
 class BlackjackGame {
-    constructor() {
+    constructor(options = {}) {
         this.gameId = null;
         this.currentBet = 0;
         this.selectedChip = null;
@@ -14,20 +20,20 @@ class BlackjackGame {
         this.isProcessing = false;
         this.previousBalance = 1000; // Track balance for logging changes
         this.gameHistory = []; // Track game history for the panel
-        this.defaultBetAmount = null; // Default bet amount for quick play
-        this.defaultBetStorageKey = 'blackjack_default_bet';
-        this.bankrollConfigKey = 'blackjack_bankroll_config';
-        this.defaultBankrollAmount = 1000;
-        this.bankrollAmount = this.defaultBankrollAmount;
+        this.stateManager = options.stateManager || new GameStateManager({
+            defaultBankrollAmount: 1000,
+            defaultDealerHitDelayMs: 1000
+        });
+        this.defaultBetAmount = this.stateManager.loadDefaultBet();
+        this.defaultBankrollAmount = this.stateManager.defaultBankrollAmount;
+        this.bankrollAmount = this.stateManager.loadBankrollConfig();
         this.bankrollSettingInput = null;
         this.bankrollHelperElement = null;
-        this.defaultDealerHitDelayMs = 1000;
-        this.dealerHitDelayKey = 'blackjack_dealer_delay_ms';
-        this.dealerHitDelayMs = this.loadDealerHitDelay();
+        this.defaultDealerHitDelayMs = this.stateManager.defaultDealerHitDelayMs;
+        this.dealerHitDelayMs = this.stateManager.loadDealerHitDelay();
         this.dealerDelayInput = null;
         this.dealerDelayHelperElement = null;
-        this.dealerHitsSoft17Key = 'blackjack_dealer_hits_soft17';
-        this.dealerHitsSoft17 = this.loadDealerHitsSoft17();
+        this.dealerHitsSoft17 = this.stateManager.loadDealerHitsSoft17();
         this.dealerHitsSoft17Toggle = null;
         this.actionStatusElement = null; // Status message element
         this.actionStatusTimeout = null; // Timeout for clearing status
@@ -49,10 +55,7 @@ class BlackjackGame {
         this.hecklerSettingsNote = null;
         this.forceDlrHandInput = null;
         this.testPeekButton = null;
-        this.isTestingPeek = false;
         this.peekAnimationDurationMs = 1350;
-        this.activePeekTimeout = null;
-        this.isDealerPeekAnimating = false;
         this.boundOutsideClickHandler = null;
         this.boundEscapeHandler = null;
         this.hecklerSettingsKey = 'blackjack_heckler_settings';
@@ -64,8 +67,7 @@ class BlackjackGame {
             this.voiceEnabled = this.hecklerPreferences.enabled === true;
         }
         // Auto mode settings
-        this.autoSettingsKey = 'blackjack_auto_settings';
-        this.autoSettings = this.loadAutoSettings();
+        this.autoSettings = this.stateManager.loadAutoSettings();
         // Dedupe key for insurance outcome history entries per round
         this.lastInsuranceOutcomeSig = null;
         this.insuranceAnnouncedForGameId = null;
@@ -99,9 +101,15 @@ class BlackjackGame {
             ]
         };
         this.useSpeechSynthesis = typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
+        this.settingsManager = options.settingsManager || new SettingsManager(this);
         if (this.useSpeechSynthesis) {
-            this.setupHecklerVoices();
+            this.settingsManager.setupHecklerVoices();
         }
+        this.ui = options.uiController || new UIController(this);
+        this.apiClient = options.apiClient || new ApiClient({
+            onMessage: (text, type) => this.ui.showMessage(text, type)
+        });
+        this.autoManager = options.autoManager || new AutoModeManager(this);
         // Don't call init() here - it's async and will be called separately
     }
 
@@ -201,81 +209,6 @@ class BlackjackGame {
         }
     }
 
-    normalizeBankrollAmount(rawValue, fallback = this.defaultBankrollAmount) {
-        if (rawValue === null || rawValue === undefined || rawValue === '') {
-            return {
-                amount: fallback,
-                fallbackUsed: true,
-                clamped: false,
-                clampedToMin: false,
-                clampedToMax: false
-            };
-        }
-
-        const numeric = typeof rawValue === 'number' ? rawValue : parseInt(rawValue, 10);
-        if (!Number.isFinite(numeric)) {
-            return {
-                amount: fallback,
-                fallbackUsed: true,
-                clamped: false,
-                clampedToMin: false,
-                clampedToMax: false
-            };
-        }
-
-        const floored = Math.floor(numeric);
-        if (!Number.isFinite(floored)) {
-            return {
-                amount: fallback,
-                fallbackUsed: true,
-                clamped: false,
-                clampedToMin: false,
-                clampedToMax: false
-            };
-        }
-
-        const minApplied = floored < 1;
-        const maxApplied = floored > 1000000;
-        const clampedValue = Math.min(Math.max(floored, 1), 1000000);
-        return {
-            amount: clampedValue,
-            fallbackUsed: false,
-            clamped: minApplied || maxApplied,
-            clampedToMin: minApplied,
-            clampedToMax: maxApplied
-        };
-    }
-
-    loadBankrollConfig() {
-        if (typeof window === 'undefined' || !window.localStorage) {
-            return this.defaultBankrollAmount;
-        }
-
-        try {
-            const stored = window.localStorage.getItem(this.bankrollConfigKey);
-            if (!stored) {
-                return this.defaultBankrollAmount;
-            }
-            const parsed = JSON.parse(stored);
-            const { amount } = this.normalizeBankrollAmount(parsed?.amount, this.defaultBankrollAmount);
-            return amount;
-        } catch (error) {
-            console.warn('Failed to load bankroll config:', error);
-            return this.defaultBankrollAmount;
-        }
-    }
-
-    saveBankrollConfig(amount) {
-        if (typeof window === 'undefined' || !window.localStorage) {
-            return;
-        }
-        try {
-            window.localStorage.setItem(this.bankrollConfigKey, JSON.stringify({ amount }));
-        } catch (error) {
-            console.warn('Failed to save bankroll config:', error);
-        }
-    }
-
     setBankrollAmount(rawValue, { fallback, persist = true, updateInput = true } = {}) {
         const previousAmount = this.bankrollAmount ?? this.defaultBankrollAmount;
         const fallbackAmount = fallback ?? previousAmount;
@@ -285,19 +218,19 @@ class BlackjackGame {
             clamped,
             clampedToMin,
             clampedToMax
-        } = this.normalizeBankrollAmount(rawValue, fallbackAmount);
+        } = this.stateManager.normalizeBankrollAmount(rawValue, fallbackAmount);
 
         this.bankrollAmount = amount;
 
         if (persist) {
-            this.saveBankrollConfig(amount);
+            this.stateManager.saveBankrollConfig(amount);
         }
 
         if (updateInput && this.bankrollSettingInput) {
             this.bankrollSettingInput.value = amount;
         }
 
-        this.updateBankrollHelper();
+        this.ui.updateBankrollHelper();
 
         return {
             amount,
@@ -309,109 +242,6 @@ class BlackjackGame {
         };
     }
 
-    updateBankrollHelper() {
-        if (!this.bankrollHelperElement) {
-            return;
-        }
-        const formatted = this.bankrollAmount.toLocaleString();
-        this.bankrollHelperElement.textContent = `Used when refreshing bankroll (max $1,000,000). Current: $${formatted}`;
-    }
-
-    normalizeDealerHitDelay(rawValue, fallbackDelay = this.defaultDealerHitDelayMs) {
-        const minDelay = 0;
-        const maxDelay = 5000;
-        const fallbackParsed = Number.parseInt(fallbackDelay, 10);
-        const safeFallback = Number.isNaN(fallbackParsed)
-            ? this.defaultDealerHitDelayMs
-            : Math.min(Math.max(fallbackParsed, minDelay), maxDelay);
-
-        if (rawValue === undefined || rawValue === null || rawValue === '') {
-            return {
-                delay: safeFallback,
-                fallbackUsed: true,
-                clamped: false,
-                clampedToMin: false,
-                clampedToMax: false
-            };
-        }
-
-        const parsed = Number.parseInt(rawValue, 10);
-        if (Number.isNaN(parsed)) {
-            return {
-                delay: safeFallback,
-                fallbackUsed: true,
-                clamped: false,
-                clampedToMin: false,
-                clampedToMax: false
-            };
-        }
-
-        const clampedValue = Math.min(Math.max(parsed, minDelay), maxDelay);
-        return {
-            delay: clampedValue,
-            fallbackUsed: false,
-            clamped: clampedValue !== parsed,
-            clampedToMin: clampedValue === minDelay && parsed < minDelay,
-            clampedToMax: clampedValue === maxDelay && parsed > maxDelay
-        };
-    }
-
-    loadDealerHitsSoft17() {
-        if (typeof window === 'undefined' || !window.localStorage) {
-            return false;
-        }
-        try {
-            const stored = window.localStorage.getItem(this.dealerHitsSoft17Key);
-            if (stored === null || stored === undefined) {
-                return false; // Default: dealer stands on all 17s
-            }
-            return stored === 'true';
-        } catch (error) {
-            console.warn('Failed to load dealer hits soft 17 config:', error);
-            return false;
-        }
-    }
-
-    saveDealerHitsSoft17() {
-        if (typeof window === 'undefined' || !window.localStorage) {
-            return;
-        }
-        try {
-            window.localStorage.setItem(this.dealerHitsSoft17Key, String(this.dealerHitsSoft17));
-        } catch (error) {
-            console.warn('Failed to save dealer hits soft 17 config:', error);
-        }
-    }
-
-    loadDealerHitDelay() {
-        if (typeof window === 'undefined' || !window.localStorage) {
-            return this.defaultDealerHitDelayMs;
-        }
-
-        try {
-            const stored = window.localStorage.getItem(this.dealerHitDelayKey);
-            if (stored === null || stored === undefined) {
-                return this.defaultDealerHitDelayMs;
-            }
-            const { delay } = this.normalizeDealerHitDelay(stored, this.defaultDealerHitDelayMs);
-            return delay;
-        } catch (error) {
-            console.warn('Failed to load dealer delay config:', error);
-            return this.defaultDealerHitDelayMs;
-        }
-    }
-
-    saveDealerHitDelay(delay) {
-        if (typeof window === 'undefined' || !window.localStorage) {
-            return;
-        }
-        try {
-            window.localStorage.setItem(this.dealerHitDelayKey, String(delay));
-        } catch (error) {
-            console.warn('Failed to save dealer delay config:', error);
-        }
-    }
-
     setDealerHitDelay(rawValue, { fallback, persist = true, updateInput = true } = {}) {
         const previousDelay = Number.isFinite(this.dealerHitDelayMs) ? this.dealerHitDelayMs : this.defaultDealerHitDelayMs;
         const fallbackDelay = fallback ?? previousDelay;
@@ -421,19 +251,17 @@ class BlackjackGame {
             clamped,
             clampedToMin,
             clampedToMax
-        } = this.normalizeDealerHitDelay(rawValue, fallbackDelay);
+        } = this.stateManager.normalizeDealerHitDelay(rawValue, fallbackDelay);
 
         this.dealerHitDelayMs = delay;
 
         if (persist) {
-            this.saveDealerHitDelay(delay);
+            this.stateManager.saveDealerHitDelay(delay);
         }
 
         if (updateInput && this.dealerDelayInput) {
             this.dealerDelayInput.value = delay;
         }
-
-        this.updateDealerDelayHelper();
 
         return {
             delay,
@@ -443,14 +271,6 @@ class BlackjackGame {
             clampedToMax,
             previous: previousDelay
         };
-    }
-
-    updateDealerDelayHelper() {
-        if (!this.dealerDelayHelperElement) {
-            return;
-        }
-        const delayDisplay = Number.isFinite(this.dealerHitDelayMs) ? this.dealerHitDelayMs : this.defaultDealerHitDelayMs;
-        this.dealerDelayHelperElement.textContent = `Delay between dealer hits (0-5000 ms). Current: ${delayDisplay} ms`;
     }
 
     /**
@@ -594,463 +414,30 @@ class BlackjackGame {
     }
 
     /**
-     * Initialize settings panel interactions
+     * Initialize settings panel (delegates to settingsManager)
      */
     initSettingsPanel() {
-        try {
-            this.settingsToggle = document.getElementById('settings-toggle');
-            this.settingsPanel = document.getElementById('settings-panel');
-            this.settingsCloseBtn = document.getElementById('settings-close');
-            this.hecklerEnabledToggle = document.getElementById('heckler-enabled-toggle');
-            this.hecklerVoiceSelect = document.getElementById('heckler-voice-select');
-            this.hecklerSpeedRange = document.getElementById('heckler-speed-range');
-            this.hecklerSpeedDisplay = document.getElementById('heckler-speed-display');
-            this.hecklerTestButton = document.getElementById('heckler-test-button');
-            this.hecklerSettingsNote = document.getElementById('heckler-settings-note');
-            this.bankrollSettingInput = document.getElementById('bankroll-setting-input');
-            this.bankrollHelperElement = document.getElementById('bankroll-setting-helper');
-            this.dealerDelayInput = document.getElementById('dealer-delay-input');
-            this.dealerDelayHelperElement = document.getElementById('dealer-delay-helper');
-            this.dealerHitsSoft17Toggle = document.getElementById('dealer-hits-soft17-toggle');
-            this.forceDlrHandInput = document.getElementById('force-dlr-hand-input');
-            this.testPeekButton = document.getElementById('test-peek-btn');
-
-            // Only proceed if the essential elements exist
-            if (!this.settingsToggle || !this.settingsPanel) {
-                console.warn('Settings panel elements not found in DOM');
-                return;
-            }
-
-            if (this.bankrollSettingInput) {
-                // Ensure the input reflects the current bankroll preference
-                this.setBankrollAmount(this.bankrollAmount, { persist: false });
-
-                const applyBankrollChange = () => {
-                    const result = this.setBankrollAmount(this.bankrollSettingInput.value);
-
-                    if (result.fallbackUsed) {
-                        // Input was empty or invalid; reset to previous value without alerting the user
-                        this.bankrollSettingInput.value = result.previous;
-                        this.log('Bankroll settings input was empty or invalid; keeping previous value.', 'warn');
-                        return;
-                    }
-
-                    if (result.clamped) {
-                        const clampMessage = result.clampedToMin
-                            ? 'Minimum bankroll is $1'
-                            : 'Maximum bankroll is $1,000,000';
-                        this.showMessage(clampMessage, 'warn');
-                    }
-
-                    if (result.amount !== result.previous) {
-                        this.log(`Bankroll preference updated to $${result.amount.toLocaleString()}`, 'success');
-                    }
-                };
-
-                this.bankrollSettingInput.addEventListener('change', applyBankrollChange);
-            } else {
-                console.warn('Bankroll setting input not found in settings panel');
-            }
-
-            if (this.dealerDelayInput) {
-                this.dealerDelayInput.value = this.dealerHitDelayMs;
-                const applyDealerDelayChange = () => {
-                    const result = this.setDealerHitDelay(this.dealerDelayInput.value);
-
-                    if (result.fallbackUsed) {
-                        this.dealerDelayInput.value = result.previous;
-                        this.log('Dealer delay input was empty or invalid; keeping previous value.', 'warn');
-                        return;
-                    }
-
-                    if (result.clamped) {
-                        const clampMessage = result.clampedToMin
-                            ? 'Minimum dealer delay is 0 ms'
-                            : 'Maximum dealer delay is 5,000 ms';
-                        this.showMessage(clampMessage, 'warn');
-                    }
-
-                    if (result.delay !== result.previous) {
-                        this.log(`Dealer card delay updated to ${result.delay} ms`, 'success');
-                    }
-                };
-
-                this.dealerDelayInput.addEventListener('change', applyDealerDelayChange);
-                this.dealerDelayInput.addEventListener('blur', applyDealerDelayChange);
-            } else {
-                console.warn('Dealer delay setting input not found in settings panel');
-            }
-
-            if (this.dealerHitsSoft17Toggle) {
-                this.dealerHitsSoft17Toggle.checked = this.dealerHitsSoft17;
-                this.dealerHitsSoft17Toggle.addEventListener('change', (event) => {
-                    this.dealerHitsSoft17 = event.target.checked;
-                    this.saveDealerHitsSoft17();
-                    const statusMessage = this.dealerHitsSoft17 
-                        ? 'Dealer will hit on soft 17 (takes effect on next game)' 
-                        : 'Dealer will stand on all 17s (takes effect on next game)';
-                    this.log(statusMessage, 'success');
-                    this.showMessage(statusMessage, 'info');
-                    // Update table sign to reflect new setting
-                    if (this.gameState) {
-                        this.gameState.dealer_hits_soft_17 = this.dealerHitsSoft17;
-                        this.updateTableSign();
-                    }
-                });
-            } else {
-                console.warn('Dealer hits soft 17 toggle not found in settings panel');
-            }
-
-            if (this.forceDlrHandInput) {
-                const applyForceDlrHandChange = async () => {
-                    const handString = this.forceDlrHandInput.value.trim();
-                    if (!this.gameId) {
-                        this.showMessage('Please start a game first', 'warn');
-                        return;
-                    }
-                    try {
-                        const result = await this.apiCall('/api/force_dealer_hand', 'POST', {
-                            game_id: this.gameId,
-                            hand_string: handString || null
-                        });
-                        if (result.success) {
-                            this.updateGameState(result.game_state);
-                            this.updateTestModeIndicator();
-                            const message = handString 
-                                ? `Test mode: Dealer hand forced to ${handString}` 
-                                : 'Test mode disabled';
-                            this.log(message, 'success');
-                        } else {
-                            this.showMessage(result.message || 'Failed to set forced dealer hand', 'error');
-                        }
-                    } catch (e) {
-                        // Error handled by apiCall
-                    }
-                };
-                this.forceDlrHandInput.addEventListener('change', applyForceDlrHandChange);
-                this.forceDlrHandInput.addEventListener('blur', applyForceDlrHandChange);
-            } else {
-                console.warn('Force dealer hand input not found in settings panel');
-            }
-
-            if (this.testPeekButton) {
-                this.testPeekButton.addEventListener('click', () => this.handleTestPeekAnimation());
-            } else {
-                console.warn('Test peek animation button not found in settings panel');
-            }
-
-            this.updateBankrollHelper();
-            this.updateDealerDelayHelper();
-
-            if (this.hecklerEnabledToggle) {
-                this.hecklerEnabledToggle.checked = this.voiceEnabled;
-                this.hecklerEnabledToggle.addEventListener('change', (event) => {
-                    this.voiceEnabled = event.target.checked;
-                    this.saveHecklerPreferences();
-                    const statusMessage = this.voiceEnabled ? 'Voice commentary enabled' : 'Voice commentary disabled';
-                    this.log(statusMessage, 'success');
-                    if (this.voiceEnabled) {
-                        this.previewHecklerVoice(true);
-                    } else {
-                        this.stopHecklerSpeech();
-                    }
-                });
-            }
-
-            if (this.hecklerTestButton) {
-                this.hecklerTestButton.addEventListener('click', () => {
-                    this.playVoiceTest();
-                });
-            }
-
-            if (this.hecklerSpeedRange) {
-                const clampedRate = Math.min(
-                    parseFloat(this.hecklerSpeedRange.max || '1.6'),
-                    Math.max(parseFloat(this.hecklerSpeedRange.min || '0.6'), this.hecklerSpeechRate)
-                );
-                this.hecklerSpeechRate = clampedRate;
-                this.hecklerSpeedRange.value = clampedRate;
-                this.updateSpeedDisplay(clampedRate);
-                this.hecklerSpeedRange.addEventListener('input', (event) => {
-                    const rate = parseFloat(event.target.value);
-                    if (!Number.isNaN(rate)) {
-                        this.hecklerSpeechRate = rate;
-                        this.updateSpeedDisplay(rate);
-                        this.saveHecklerPreferences();
-                    }
-                });
-            }
-
-            const updateVoiceSelection = () => {
-                if (!this.hecklerVoiceSelect) return;
-                this.hecklerVoiceSelect.addEventListener('change', (event) => {
-                    const selectedId = event.target.value;
-                    this.pendingPreferredVoiceId = selectedId || null;
-                    if (!this.useSpeechSynthesis || typeof window === 'undefined' || !window.speechSynthesis) {
-                        return;
-                    }
-                    const voices = window.speechSynthesis.getVoices();
-                    if (!voices || !voices.length) {
-                        return;
-                    }
-                    const chosenVoice = voices.find((voice) => this.getVoiceIdentifier(voice) === selectedId);
-                    if (chosenVoice) {
-                        this.hecklerVoice = chosenVoice;
-                        if (this.hecklerPreferences === null) {
-                            this.hecklerPreferences = {};
-                        }
-                        this.hecklerPreferences.voiceId = selectedId;
-                        this.saveHecklerPreferences();
-                        this.previewHecklerVoice(true);
-                    }
-                });
-            };
-
-            this.settingsToggle.setAttribute('aria-expanded', 'false');
-            this.settingsToggle.addEventListener('click', () => {
-                this.toggleSettingsPanel(!this.settingsPanel.classList.contains('open'));
-            });
-
-            if (this.settingsCloseBtn) {
-                this.settingsCloseBtn.addEventListener('click', () => this.toggleSettingsPanel(false));
-            }
-
-            if (this.useSpeechSynthesis) {
-                updateVoiceSelection();
-                this.refreshVoiceOptions();
-                if (this.hecklerSettingsNote) {
-                    this.hecklerSettingsNote.hidden = true;
-                }
-                if (this.hecklerTestButton) {
-                    this.hecklerTestButton.disabled = false;
-                    this.hecklerTestButton.title = '';
-                }
-            } else {
-                if (this.hecklerVoiceSelect) {
-                    this.hecklerVoiceSelect.innerHTML = '';
-                    const option = document.createElement('option');
-                    option.value = '';
-                    option.textContent = 'Speech not supported';
-                    this.hecklerVoiceSelect.appendChild(option);
-                    this.hecklerVoiceSelect.disabled = true;
-                }
-                if (this.hecklerSpeedRange) {
-                    this.hecklerSpeedRange.disabled = true;
-                }
-                if (this.hecklerSettingsNote) {
-                    this.hecklerSettingsNote.hidden = false;
-                }
-                if (this.hecklerTestButton) {
-                    this.hecklerTestButton.disabled = true;
-                    this.hecklerTestButton.title = 'Speech synthesis not supported';
-                }
-            }
-        } catch (error) {
-            console.error('Error initializing settings panel:', error);
-            // Don't throw - allow the game to continue even if settings panel fails
-        }
+        this.settingsManager.initSettingsPanel();
     }
+
 
     /**
-     * Update the displayed speech rate
+     * Heckler voice methods (delegated to settingsManager)
      */
-    updateSpeedDisplay(rate) {
-        if (!this.hecklerSpeedDisplay) return;
-        const rounded = Math.round(rate * 100) / 100;
-        this.hecklerSpeedDisplay.textContent = `${rounded.toFixed(2)}×`;
-    }
-
-    /**
-     * Toggle settings panel visibility
-     */
-    toggleSettingsPanel(forceOpen = null) {
-        if (!this.settingsPanel || !this.settingsToggle) return;
-        const shouldOpen = forceOpen !== null ? forceOpen : !this.settingsPanel.classList.contains('open');
-        if (shouldOpen) {
-            this.settingsPanel.classList.add('open');
-            this.settingsPanel.setAttribute('aria-hidden', 'false');
-            this.settingsToggle.setAttribute('aria-expanded', 'true');
-            if (this.bankrollSettingInput) {
-                this.bankrollSettingInput.value = this.bankrollAmount;
-            }
-            if (this.dealerDelayInput) {
-                this.dealerDelayInput.value = this.dealerHitDelayMs;
-            }
-            if (this.hecklerEnabledToggle) {
-                this.hecklerEnabledToggle.checked = this.voiceEnabled;
-            }
-            this.updateBankrollHelper();
-            this.updateDealerDelayHelper();
-            if (!this.boundOutsideClickHandler) {
-                this.boundOutsideClickHandler = (event) => this.handleOutsideClick(event);
-                document.addEventListener('mousedown', this.boundOutsideClickHandler);
-            }
-            if (!this.boundEscapeHandler) {
-                this.boundEscapeHandler = (event) => this.handleEscapeKey(event);
-                document.addEventListener('keydown', this.boundEscapeHandler);
-            }
-        } else {
-            this.settingsPanel.classList.remove('open');
-            this.settingsPanel.setAttribute('aria-hidden', 'true');
-            this.settingsToggle.setAttribute('aria-expanded', 'false');
-            if (this.boundOutsideClickHandler) {
-                document.removeEventListener('mousedown', this.boundOutsideClickHandler);
-                this.boundOutsideClickHandler = null;
-            }
-            if (this.boundEscapeHandler) {
-                document.removeEventListener('keydown', this.boundEscapeHandler);
-                this.boundEscapeHandler = null;
-            }
-            this.updateBankrollHelper();
-            this.updateDealerDelayHelper();
-        }
-    }
-
-    handleOutsideClick(event) {
-        if (!this.settingsPanel || !this.settingsToggle) return;
-        if (this.settingsPanel.contains(event.target) || this.settingsToggle.contains(event.target)) {
-            return;
-        }
-        this.toggleSettingsPanel(false);
-    }
-
-    handleEscapeKey(event) {
-        if (event.key === 'Escape') {
-            this.toggleSettingsPanel(false);
-        }
-    }
-
-    /**
-     * Setup speech synthesis voice selection for the heckler
-     */
-    setupHecklerVoices() {
-        if (!this.useSpeechSynthesis) return;
-        const synth = window.speechSynthesis;
-        const loadVoices = () => {
-            const voices = synth.getVoices();
-            if (voices && voices.length) {
-                this.populateVoiceOptions(voices);
-                this.assignPreferredVoice(voices);
-            }
-        };
-        loadVoices();
-        synth.addEventListener('voiceschanged', loadVoices);
-        this.hecklerVoicesListener = loadVoices;
-    }
-
     previewHecklerVoice(force = false) {
-        if ((!force && !this.voiceEnabled) || !this.useSpeechSynthesis || !this.hecklerVoice) return;
-        const synth = window.speechSynthesis;
-        const utterance = new SpeechSynthesisUtterance('Are you feeling lucky today?');
-        utterance.voice = this.hecklerVoice;
-        utterance.rate = this.hecklerSpeechRate;
-        synth.cancel();
-        synth.speak(utterance);
+        this.settingsManager.previewHecklerVoice(force);
     }
 
     playVoiceTest() {
-        if (!this.useSpeechSynthesis || typeof window === 'undefined' || !window.speechSynthesis) {
-            this.log('Voice test requested but speech synthesis is unavailable', 'warn');
-            return;
-        }
-        const synth = window.speechSynthesis;
-        try {
-            synth.cancel();
-        } catch (error) {
-            console.warn('Failed to cancel speech synthesis before test:', error);
-        }
-        const utterance = new SpeechSynthesisUtterance('Testing 1, Testing 2, Testing 3.');
-        if (this.hecklerVoice) {
-            utterance.voice = this.hecklerVoice;
-        } else {
-            const voices = synth.getVoices();
-            const usVoice = voices.find((voice) => {
-                const lang = voice.lang || '';
-                return typeof lang === 'string' && lang.toLowerCase().startsWith('en-us');
-            });
-            if (usVoice) {
-                utterance.voice = usVoice;
-                this.hecklerVoice = usVoice;
-                this.pendingPreferredVoiceId = this.getVoiceIdentifier(usVoice);
-                this.saveHecklerPreferences();
-            }
-        }
-        utterance.rate = this.hecklerSpeechRate;
-        utterance.pitch = 1;
-        utterance.volume = 0.9;
-        synth.speak(utterance);
+        this.settingsManager.playVoiceTest();
     }
 
-    /**
-     * Speak the heckler commentary using Web Speech API
-     */
     speakHecklerLine(message, token) {
-        if (!this.voiceEnabled || !this.useSpeechSynthesis || !message || typeof window === 'undefined') return false;
-        const synth = window.speechSynthesis;
-        if (!synth) return false;
-
-        try {
-            this.stopHecklerSpeech();
-            const utterance = new SpeechSynthesisUtterance(message);
-            if (this.hecklerVoice) {
-                utterance.voice = this.hecklerVoice;
-            } else {
-                const voices = synth.getVoices();
-                const usVoice = voices.find((voice) => {
-                    const lang = voice.lang || '';
-                    return typeof lang === 'string' && lang.toLowerCase().startsWith('en-us');
-                });
-                if (usVoice) {
-                    utterance.voice = usVoice;
-                    this.hecklerVoice = usVoice;
-                    this.pendingPreferredVoiceId = this.getVoiceIdentifier(usVoice);
-                    this.saveHecklerPreferences();
-                    this.refreshVoiceOptions();
-                }
-            }
-            utterance.rate = this.hecklerSpeechRate;
-            utterance.pitch = 1;
-            utterance.volume = 0.9;
-            utterance.onend = () => {
-                this.currentHecklerUtterance = null;
-                if (token && token === this.activeHecklerToken) {
-                    this.hideHecklerMessage(token);
-                }
-            };
-            utterance.onerror = () => {
-                this.currentHecklerUtterance = null;
-                if (token && token === this.activeHecklerToken) {
-                    this.hideHecklerMessage(token);
-                }
-            };
-            this.currentHecklerUtterance = utterance;
-            synth.speak(utterance);
-            return true;
-        } catch (error) {
-            console.error('Heckler speech failed:', error);
-            this.useSpeechSynthesis = false;
-            this.currentHecklerUtterance = null;
-            return false;
-        }
-        return false;
+        return this.settingsManager.speakHecklerLine(message, token);
     }
 
-    /**
-     * Stop any ongoing heckler speech
-     */
     stopHecklerSpeech() {
-        if (!this.useSpeechSynthesis || typeof window === 'undefined') return;
-        const synth = window.speechSynthesis;
-        if (!synth) return;
-        try {
-            if (synth.speaking || synth.pending) {
-                synth.cancel();
-            }
-        } catch (error) {
-            console.error('Failed to cancel heckler speech:', error);
-        } finally {
-            this.currentHecklerUtterance = null;
-        }
+        this.settingsManager.stopHecklerSpeech();
     }
 
     /**
@@ -1292,7 +679,7 @@ class BlackjackGame {
         
         // Setup chip selection
         this.setupChipSelection();
-        const storedBankroll = this.loadBankrollConfig();
+        const storedBankroll = this.stateManager.loadBankrollConfig();
         this.setBankrollAmount(storedBankroll, { persist: false });
         this.initSettingsPanel();
         this.setupKeyboardHotkeys();
@@ -1321,7 +708,7 @@ class BlackjackGame {
         }
         
         // Initialize table sign with default values
-        this.updateTableSign();
+        this.ui.updateTableSign();
         
         // Auto mode controls
         this.autoPanelVisible = false;
@@ -1370,22 +757,22 @@ class BlackjackGame {
             await this.newGame();
         } catch (error) {
             console.error('Failed to initialize game:', error);
-            this.showMessage('Game initialization failed. Please refresh the page.', 'error');
+            this.ui.showMessage('Game initialization failed. Please refresh the page.', 'error');
         }
     }
 
     async sendInsuranceDecision(decision) {
         if (!this.gameId) return;
         try {
-            this.showLoading();
-            const result = await this.apiCall('/api/insurance', 'POST', {
+            this.ui.showLoading();
+            const result = await this.apiClient.requestInsurance({
                 game_id: this.gameId,
                 decision
             });
             if (result.success) {
                 // If dealer peeked, show peek animation before updating state
                 if (result.dealer_peeked) {
-                    await this.animateDealerPeek();
+                    await this.ui.animateDealerPeek();
                 }
                 this.updateGameState(result.game_state);
                 // If game ended due to dealer blackjack, end the round
@@ -1393,52 +780,14 @@ class BlackjackGame {
                     await this.endGame();
                 }
             } else {
-                this.showMessage(result.error || 'Insurance action failed', 'error');
+                this.ui.showMessage(result.error || 'Insurance action failed', 'error');
             }
         } catch (e) {
-            // error surfaced by apiCall
+            // error surfaced by ApiClient
         } finally {
-            this.hideLoading();
-            this.updateButtonStates();
+            this.ui.hideLoading();
+            this.ui.updateButtonStates();
         }
-    }
-
-    /**
-     * Show action status message
-     */
-    setActionStatus(message, duration = 3000) {
-        if (!this.actionStatusElement) return;
-        
-        // Clear existing timeout
-        if (this.actionStatusTimeout) {
-            clearTimeout(this.actionStatusTimeout);
-        }
-        
-        // Show message
-        this.actionStatusElement.textContent = message.toLowerCase();
-        this.actionStatusElement.classList.remove('inactive');
-        this.actionStatusElement.classList.add('active');
-        
-        // Auto-hide after duration
-        this.actionStatusTimeout = setTimeout(() => {
-            this.actionStatusElement.classList.remove('active');
-            this.actionStatusElement.classList.add('inactive');
-        }, duration);
-    }
-
-    /**
-     * Clear action status message
-     */
-    clearActionStatus() {
-        if (!this.actionStatusElement) return;
-        
-        if (this.actionStatusTimeout) {
-            clearTimeout(this.actionStatusTimeout);
-        }
-        
-        this.actionStatusElement.textContent = '';
-        this.actionStatusElement.classList.remove('active');
-        this.actionStatusElement.classList.add('inactive');
     }
 
     /**
@@ -1579,7 +928,7 @@ class BlackjackGame {
         const newBetAmount = this.currentBet + value;
         
         if (newBetAmount > limits.max_bet) {
-            this.showMessage(`Maximum bet is $${limits.max_bet}`, 'error');
+            this.ui.showMessage(`Maximum bet is $${limits.max_bet}`, 'error');
             return;
         }
         
@@ -1621,355 +970,15 @@ class BlackjackGame {
     }
 
     /**
-     * Show loading overlay
-     */
-    showLoading() {
-        document.getElementById('loading-overlay').style.display = 'flex';
-        this.isProcessing = true;
-        this.setButtonsEnabled(false);
-    }
-
-    /**
-     * Hide loading overlay
-     */
-    hideLoading() {
-        document.getElementById('loading-overlay').style.display = 'none';
-        this.isProcessing = false;
-        // Don't blindly enable all buttons - use updateButtonStates instead
-        this.updateButtonStates();
-    }
-
-    /**
-     * Enable/disable buttons based on game state
-     */
-    setButtonsEnabled(enabled) {
-        // Only disable game action buttons, NOT betting chips
-        const actionButtons = ['hit-btn', 'stand-btn', 'double-btn', 'split-btn', 'surrender-btn', 'deal-btn'];
-        actionButtons.forEach(btnId => {
-            const btn = document.getElementById(btnId);
-            if (btn) {
-                btn.disabled = !enabled;
-            }
-        });
-        
-        // Chips should always be enabled during betting phase
-        // They're controlled separately by showBettingArea/hideBettingArea
-    }
-
-    /**
-     * Make API call with proper error handling
-     */
-    async apiCall(endpoint, method = 'POST', data = {}) {
-        try {
-            const options = {
-                method: method,
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            };
-
-            if (method === 'POST' && Object.keys(data).length > 0) {
-                options.body = JSON.stringify(data);
-            }
-
-            let response;
-            try {
-                response = await fetch(endpoint, options);
-            } catch (fetchError) {
-                // Network error - this includes broken pipe errors
-                console.error('Network error during fetch:', fetchError.message);
-                throw new Error(`Connection failed: ${fetchError.message || 'Server unreachable'}`);
-            }
-            
-            // Check if response is JSON
-            const contentType = response.headers.get('content-type');
-            if (!contentType || !contentType.includes('application/json')) {
-                const text = await response.text();
-                const preview = text.substring(0, 100);
-                console.error('Non-JSON response received:', { status: response.status, text: preview });
-                throw new Error(`Server error (${response.status}): Invalid response format`);
-            }
-            
-            let result;
-            try {
-                result = await response.json();
-            } catch (jsonError) {
-                console.error('Failed to parse JSON response:', jsonError);
-                throw new Error('Server returned invalid JSON');
-            }
-            
-            if (!response.ok) {
-                const errorMsg = result.error || result.message || `HTTP ${response.status}: ${response.statusText}`;
-                console.error('API Error Response:', result);
-                throw new Error(errorMsg);
-            }
-            
-            return result;
-        } catch (error) {
-            console.error('API Error Details:', {
-                endpoint,
-                method,
-                data,
-                error: error.message,
-                stack: error.stack
-            });
-            this.showMessage(`Error: ${error.message}`, 'error');
-            throw error;
-        }
-    }
-
-    /**
-     * Show game message
-     */
-    showMessage(text, type = 'info') {
-        const messageElement = document.getElementById('game-message');
-        if (messageElement) {
-            messageElement.textContent = text;
-            messageElement.className = `game-message ${type}`;
-            
-            if (type === 'error') {
-                messageElement.style.color = '#dc3545';
-            } else if (type === 'win') {
-                messageElement.style.color = '#28a745';
-            } else {
-                messageElement.style.color = '#ffd700';
-            }
-        }
-    }
-
-    /**
-     * Show message with multiple colored parts
-     * @param {string} text1 - First part of message
-     * @param {string} color1 - Color for first part
-     * @param {string} text2 - Second part of message
-     * @param {string} color2 - Color for second part
-     */
-    showMessageWithColors(text1, color1, text2, color2) {
-        const messageElement = document.getElementById('game-message');
-        if (messageElement) {
-            messageElement.innerHTML = `<span style="color: ${color1}">${text1}</span><span style="color: ${color2}">${text2}</span>`;
-            messageElement.className = 'game-message';
-            // Reset inline color style since we're using spans
-            messageElement.style.color = '';
-        }
-    }
-
-    /**
-     * Show blackjack celebration animation
-     * @returns {Promise} Resolves when animation completes
-     */
-    showBlackjackCelebration() {
-        return new Promise((resolve) => {
-            const overlay = document.getElementById('blackjack-celebration');
-            if (!overlay) {
-                resolve();
-                return;
-            }
-
-            // Show the overlay
-            overlay.style.display = 'flex';
-            
-            // After 2.5 seconds, start fade out
-            setTimeout(() => {
-                overlay.classList.add('fade-out');
-                
-                // After fade out completes (300ms), hide and clean up
-                setTimeout(() => {
-                    overlay.style.display = 'none';
-                    overlay.classList.remove('fade-out');
-                    resolve();
-                }, 300);
-            }, 2500);
-        });
-    }
-
-    /**
-     * Clear current dealer peek animation state
-     */
-    clearDealerPeekAnimation() {
-        if (this.activePeekTimeout) {
-            clearTimeout(this.activePeekTimeout);
-            this.activePeekTimeout = null;
-        }
-        const activePeekElements = document.querySelectorAll('#dealer-hand .peeking');
-        activePeekElements.forEach((el) => el.classList.remove('peeking'));
-        this.isDealerPeekAnimating = false;
-    }
-
-    /**
-     * Animate dealer peeking at hole card
-     * @param {Object} options
-     * @param {boolean} options.allowPlaceholder - Create a placeholder card if needed
-     * @param {string} options.source - For logging context
-     * @returns {Promise} Resolves when animation completes
-     */
-    async animateDealerPeek(options = {}) {
-        const { allowPlaceholder = false, source = 'live' } = options;
-        return new Promise((resolve) => {
-            const dealerHandContainer = document.getElementById('dealer-hand');
-            if (!dealerHandContainer) {
-                console.warn('🎰 No dealer hand container found for peek animation');
-                resolve();
-                return;
-            }
-
-            let holeCard = dealerHandContainer.querySelector('.card.flipped');
-            let cleanupPlaceholder = null;
-
-            if (!holeCard && allowPlaceholder) {
-                holeCard = this.createPeekTestCardElement();
-                dealerHandContainer.prepend(holeCard);
-                cleanupPlaceholder = () => {
-                    if (holeCard && holeCard.parentNode) {
-                        holeCard.parentNode.removeChild(holeCard);
-                    }
-                };
-            }
-
-            if (!holeCard) {
-                console.warn('🎰 No flipped hole card available for peek animation');
-                resolve();
-                return;
-            }
-
-            console.log(`🎰 Animating dealer peek on hole card... (source: ${source})`);
-            
-            const duration = this.peekAnimationDurationMs || 1350;
-            const cssDuration = `${duration}ms`;
-            const cardInner = holeCard.querySelector('.card-inner');
-
-            this.clearDealerPeekAnimation();
-
-            if (cardInner) {
-                cardInner.style.setProperty('--peek-duration', cssDuration);
-            }
-            holeCard.style.setProperty('--peek-duration', cssDuration);
-
-            // Force reflow so the animation restarts
-            void holeCard.offsetWidth;
-
-            holeCard.classList.add('peeking');
-            if (cardInner) {
-                cardInner.classList.add('peeking');
-            }
-
-            this.isDealerPeekAnimating = true;
-
-            this.activePeekTimeout = setTimeout(() => {
-                holeCard.classList.remove('peeking');
-                holeCard.style.removeProperty('--peek-duration');
-                
-                if (cardInner) {
-                    cardInner.classList.remove('peeking');
-                    cardInner.style.removeProperty('--peek-duration');
-                }
-
-                if (cleanupPlaceholder) {
-                    setTimeout(cleanupPlaceholder, 200);
-                }
-
-                this.isDealerPeekAnimating = false;
-                this.activePeekTimeout = null;
-                console.log('🎰 Dealer peek animation complete');
-                resolve();
-            }, duration);
-        });
-    }
-
-    /**
-     * Build a temporary card element to demo the peek animation
-     * without depending on the game state.
-     */
-    createPeekTestCardElement() {
-        const cardDiv = document.createElement('div');
-        cardDiv.className = 'card suit-spades flipped temp-peek-card';
-        cardDiv.dataset.tempPeek = 'true';
-
-        const cardInner = document.createElement('div');
-        cardInner.className = 'card-inner';
-
-        const cardFront = document.createElement('div');
-        cardFront.className = 'card-front';
-
-        const rankTop = document.createElement('div');
-        rankTop.className = 'card-rank-top';
-        rankTop.textContent = 'A';
-
-        const suitDiv = document.createElement('div');
-        suitDiv.className = 'card-suit';
-        suitDiv.textContent = '♠';
-
-        const rankBottom = document.createElement('div');
-        rankBottom.className = 'card-rank-bottom';
-        rankBottom.textContent = 'A';
-
-        cardFront.appendChild(rankTop);
-        cardFront.appendChild(suitDiv);
-        cardFront.appendChild(rankBottom);
-
-        const cardBack = document.createElement('div');
-        cardBack.className = 'card-back';
-        const backPattern = document.createElement('div');
-        backPattern.className = 'card-back-pattern';
-        cardBack.appendChild(backPattern);
-
-        cardInner.appendChild(cardFront);
-        cardInner.appendChild(cardBack);
-        cardDiv.appendChild(cardInner);
-
-        return cardDiv;
-    }
-
-    /**
-     * Handle manual peek animation testing from the settings panel
-     */
-    async handleTestPeekAnimation() {
-        if (this.isTestingPeek) {
-            this.log('Peek animation test already running', 'warn');
-            return;
-        }
-
-        if (this.isDealerPeekAnimating) {
-            this.log('Dealer peek animation already running', 'warn');
-            return;
-        }
-
-        this.isTestingPeek = true;
-        const button = this.testPeekButton || null;
-        const originalLabel = button ? button.textContent : '';
-
-        if (button) {
-            button.disabled = true;
-            button.textContent = 'Testing...';
-        }
-
-        this.setActionStatus('testing dealer peek animation', this.peekAnimationDurationMs + 600);
-        this.log('Manual dealer peek animation test triggered', 'action');
-
-        try {
-            await this.animateDealerPeek({ allowPlaceholder: true, source: 'test-button' });
-        } catch (error) {
-            console.error('Dealer peek animation test failed:', error);
-            this.showMessage('Peek animation test failed - see console for details', 'error');
-        } finally {
-            if (button) {
-                button.disabled = false;
-                button.textContent = originalLabel;
-            }
-            this.isTestingPeek = false;
-        }
-    }
-
-    /**
      * Start a new game round (preserves balance)
      */
     async newGame() {
         try {
-            this.showLoading();
+            this.ui.showLoading();
             this.clearBet();
             this.clearHands();
-            this.hideGameControls();
-            this.showBettingArea(); // Enable betting area for new game
+            this.ui.hideGameControls();
+            this.ui.showBettingArea(); // Enable betting area for new game
             
             // If we have an existing game, continue it (preserves balance)
             // Otherwise create a new game with $1000
@@ -1977,7 +986,7 @@ class BlackjackGame {
                 { game_id: this.gameId } : 
                 { starting_chips: 1000, dealer_hits_soft_17: this.dealerHitsSoft17 };
             
-            const result = await this.apiCall('/api/new_game', 'POST', requestData);
+            const result = await this.apiClient.startNewGame(requestData);
             
             if (result.success) {
                 this.gameId = result.game_id;
@@ -1986,14 +995,14 @@ class BlackjackGame {
                 this.previousBalance = 1000; // Reset tracking for fresh start
                 this.lastInsuranceOutcomeSig = null;
                 this.insuranceAnnouncedForGameId = null;
-                this.updateButtonStates();
-                this.showMessage('Bankroll refreshed! Place your bet to start!');
+                this.ui.updateButtonStates();
+                this.ui.showMessage('Bankroll refreshed! Place your bet to start!');
                 this.log('Bankroll refreshed - new game with $1000', 'success');
             }
         } catch (error) {
             this.log(`New game error: ${error.message}`, 'error');
         } finally {
-            this.hideLoading();
+            this.ui.hideLoading();
         }
     }
 
@@ -2002,7 +1011,7 @@ class BlackjackGame {
      */
     async refreshBankroll() {
         try {
-            const { amount: bankrollAmount } = this.normalizeBankrollAmount(
+            const { amount: bankrollAmount } = this.stateManager.normalizeBankrollAmount(
                 this.bankrollAmount,
                 this.defaultBankrollAmount
             );
@@ -2011,13 +1020,13 @@ class BlackjackGame {
                 this.setBankrollAmount(bankrollAmount);
             }
 
-            this.showLoading();
+            this.ui.showLoading();
             this.clearBet();
             this.clearHands();
-            this.hideGameControls();
-            this.showBettingArea();
+            this.ui.hideGameControls();
+            this.ui.showBettingArea();
 
-            const result = await this.apiCall('/api/new_game', 'POST', {
+            const result = await this.apiClient.startNewGame({
                 starting_chips: bankrollAmount,
                 dealer_hits_soft_17: this.dealerHitsSoft17
             });
@@ -2027,16 +1036,16 @@ class BlackjackGame {
                 this.updateGameState(result.game_state);
                 this.previousBalance = bankrollAmount; // Reset tracking for fresh start
                 this.insuranceAnnouncedForGameId = null;
-                this.updateButtonStates();
-                this.showMessage(`Bankroll refreshed! Starting with $${bankrollAmount.toLocaleString()}. Place your bet to start!`);
+                this.ui.updateButtonStates();
+                this.ui.showMessage(`Bankroll refreshed! Starting with $${bankrollAmount.toLocaleString()}. Place your bet to start!`);
                 this.log(`Bankroll refreshed - new game with $${bankrollAmount.toLocaleString()}`, 'success');
             }
         } catch (error) {
             const errorMessage = error?.message || 'Error refreshing bankroll';
             this.log(`Refresh bankroll error: ${errorMessage}`, 'error');
-            this.showMessage(errorMessage, 'error');
+            this.ui.showMessage(errorMessage, 'error');
         } finally {
-            this.hideLoading();
+            this.ui.hideLoading();
         }
     }
 
@@ -2049,18 +1058,18 @@ class BlackjackGame {
         }
         
         if (amount <= 0) {
-            this.showMessage('Please select a bet amount', 'error');
+            this.ui.showMessage('Please select a bet amount', 'error');
             return false;
         }
 
         // Validate against table limits
         const limits = this.gameState?.table_limits || { min_bet: 5, max_bet: 500 };
         if (amount < limits.min_bet) {
-            this.showMessage(`Minimum bet is $${limits.min_bet}`, 'error');
+            this.ui.showMessage(`Minimum bet is $${limits.min_bet}`, 'error');
             return false;
         }
         if (amount > limits.max_bet) {
-            this.showMessage(`Maximum bet is $${limits.max_bet}`, 'error');
+            this.ui.showMessage(`Maximum bet is $${limits.max_bet}`, 'error');
             return false;
         }
         
@@ -2068,8 +1077,8 @@ class BlackjackGame {
         const balanceBeforeBet = this.gameState?.player?.chips || this.previousBalance || 1000;
         
         try {
-            this.showLoading();
-            const result = await this.apiCall('/api/bet', 'POST', {
+            this.ui.showLoading();
+            const result = await this.apiClient.placeBet({
                 game_id: this.gameId,
                 amount: amount
             });
@@ -2095,16 +1104,16 @@ class BlackjackGame {
                     console.log(`✅ Bet deducted correctly`);
                 }
                 
-                this.updateButtonStates();
+                this.ui.updateButtonStates();
                 return true;
             } else {
-                this.showMessage(result.error || 'Bet failed', 'error');
+                this.ui.showMessage(result.error || 'Bet failed', 'error');
                 return false;
             }
         } catch (error) {
             return false;
         } finally {
-            this.hideLoading();
+            this.ui.hideLoading();
         }
     }
 
@@ -2130,12 +1139,12 @@ class BlackjackGame {
         const stateBeforeDeal = this.gameState?.state;
         if (stateBeforeDeal && !safeStates.includes(stateBeforeDeal)) {
             this.log(`DEAL DENIED: Game state is "${stateBeforeDeal}", expected betting or game_over`, 'warn');
-            this.showMessage('Finish the current hand before dealing again.', 'warn');
+            this.ui.showMessage('Finish the current hand before dealing again.', 'warn');
             return;
         }
 
         this.log('Starting dealCards process', 'deal');
-        this.setActionStatus('dealing cards');
+        this.ui.setActionStatus('dealing cards');
         
         // Auto-place default bet if no bet and default bet is set
         if (this.currentBet <= 0 && this.defaultBetAmount) {
@@ -2146,21 +1155,21 @@ class BlackjackGame {
         
         if (this.currentBet <= 0) {
             this.log('DEAL DENIED: No bet placed', 'warn');
-            this.showMessage('Please place a bet first', 'error');
+            this.ui.showMessage('Please place a bet first', 'error');
             return;
         }
         
         if (!this.gameId) {
             this.log('DEAL DENIED: No gameId', 'warn');
-            this.showMessage('Please start a new game', 'error');
+            this.ui.showMessage('Please start a new game', 'error');
             return;
         }
         
         // Immediately disable betting area once deal starts
-        this.hideBettingArea();
+        this.ui.hideBettingArea();
         
         try {
-            this.showLoading();
+            this.ui.showLoading();
             
             // If game is already over, reset it for a new round (same game, same balance)
             // BUT preserve the current bet if user already placed one
@@ -2169,7 +1178,7 @@ class BlackjackGame {
                 this.log('Previous round finished, resetting for new round...', 'action');
                 try {
                     // Call new_game API with existing game_id to continue same game (preserves balance)
-                    const result = await this.apiCall('/api/new_game', 'POST', {
+                    const result = await this.apiClient.startNewGame({
                         game_id: this.gameId
                     });
                     
@@ -2179,8 +1188,8 @@ class BlackjackGame {
                         this.loggedRoundId = null; // Reset logged round when starting new round
                         this.updateGameState(result.game_state);
                         this.clearHands();
-                        this.hideGameControls();
-                        this.showBettingArea();
+                        this.ui.hideGameControls();
+                        this.ui.showBettingArea();
                         
                         // Restore the bet if user had placed one
                         if (betToPreserve > 0) {
@@ -2188,14 +1197,14 @@ class BlackjackGame {
                             this.log(`Preserved bet: $${this.currentBet}`, 'action');
                         }
                         
-                        this.updateButtonStates();
+                        this.ui.updateButtonStates();
                         this.log('Game reset for new round (balance preserved)', 'success');
                     } else {
                         throw new Error(result.error || 'Failed to reset game');
                     }
                 } catch (error) {
                     this.log(`ERROR resetting game: ${error.message}`, 'error');
-                    this.showMessage('Error resetting game', 'error');
+                    this.ui.showMessage('Error resetting game', 'error');
                     return;
                 }
             }
@@ -2214,7 +1223,7 @@ class BlackjackGame {
             }
             
             this.log(`Dealing cards for game ${this.gameId}`, 'deal');
-            const result = await this.apiCall('/api/deal', 'POST', {
+            const result = await this.apiClient.deal({
                 game_id: this.gameId
             });
             
@@ -2225,15 +1234,15 @@ class BlackjackGame {
                 
                 // If dealer peeked (10-value upcard), show peek animation
                 if (result.dealer_peeked) {
-                    await this.animateDealerPeek();
+                    await this.ui.animateDealerPeek();
                     // Update state again after peek animation
                     await this.updateGameStateFromServer();
                     this.renderHands();
                 }
                 
-                this.hideBettingArea();
-                this.showGameControls();
-                this.updateButtonStates();
+                this.ui.hideBettingArea();
+                this.ui.showGameControls();
+                this.ui.updateButtonStates();
                 
                 // Log player and dealer initial hands
                 const playerHand = this.gameState.player?.hands?.[this.gameState.player.current_hand_index];
@@ -2255,7 +1264,7 @@ class BlackjackGame {
                     // Show result message based on outcome
                     if (result === 'blackjack') {
                         this.log('Player wins with BLACKJACK!', 'win');
-                        await this.showBlackjackCelebration();
+                        await this.ui.showBlackjackCelebration();
                         // Calculate blackjack win amount (3:2 payout = 1.5x bet profit)
                         const handsArray = this.gameState?.player?.hands || [];
                         let totalBet = 0;
@@ -2266,39 +1275,39 @@ class BlackjackGame {
                         }
                         const blackjackProfit = Math.floor(totalBet * 1.5);
                         const formattedBlackjackProfit = blackjackProfit > 0 ? blackjackProfit.toLocaleString() : '0';
-                        this.showMessage(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉`, 'win');
+                        this.ui.showMessage(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉`, 'win');
                     } else if (result === 'push') {
                         this.log('Round ends in PUSH (tie)', 'action');
-                        this.showMessage("It's a Push - Tie!", 'info');
+                        this.ui.showMessage("It's a Push - Tie!", 'info');
                     } else if (result === 'loss') {
                         this.log('Player loses - Dealer has BLACKJACK', 'bust');
-                        this.showMessage('Dealer Blackjack - You Lose', 'error');
+                        this.ui.showMessage('Dealer Blackjack - You Lose', 'error');
                     } else if (result === 'win') {
                         this.log('Player wins the round', 'win');
-                        this.showMessage('You Win! 🎉', 'win');
+                        this.ui.showMessage('You Win! 🎉', 'win');
                     }
                     
                     // Disable game controls and show new game button
-                    this.hideGameControls();
-                    this.showBettingArea();
+                    this.ui.hideGameControls();
+                    this.ui.showBettingArea();
                 } else {
                     // Game continues - show Your Turn
                     this.log('Player turn begins', 'action');
-                    this.showMessage('Your turn!');
+                    this.ui.showMessage('Your turn!');
                 }
             } else {
                 this.log(`Deal failed: ${result.error || result.message}`, 'error');
-                this.showMessage(result.error || result.message || 'Deal failed', 'error');
-                this.hideGameControls();
-                this.showBettingArea();
+                this.ui.showMessage(result.error || result.message || 'Deal failed', 'error');
+                this.ui.hideGameControls();
+                this.ui.showBettingArea();
             }
         } catch (error) {
             this.log(`Deal error: ${error.message}`, 'error');
-            this.showMessage(`Error: ${error.message}`, 'error');
-            this.hideGameControls();
-            this.showBettingArea();
+            this.ui.showMessage(`Error: ${error.message}`, 'error');
+            this.ui.hideGameControls();
+            this.ui.showBettingArea();
         } finally {
-            this.hideLoading();
+            this.ui.hideLoading();
         }
     }
 
@@ -2327,7 +1336,7 @@ class BlackjackGame {
         const currentHandBeforeHit = handsBeforeHit[safeIndexBeforeHit] || null;
         const currentValue = currentHandBeforeHit?.value || 0;
         this.log(`Player attempting HIT (current value: ${currentValue})`, 'hit');
-        this.setActionStatus('taking hit');
+        this.ui.setActionStatus('taking hit');
         
         const dealerUpCard = this.getDealerUpCard();
         const heckleAssessment = this.evaluateHitDecision(currentHandBeforeHit, dealerUpCard);
@@ -2337,8 +1346,8 @@ class BlackjackGame {
         }
         
         try {
-            this.showLoading();
-            const result = await this.apiCall('/api/hit', 'POST', {
+            this.ui.showLoading();
+            const result = await this.apiClient.hit({
                 game_id: this.gameId
             });
             
@@ -2388,12 +1397,12 @@ class BlackjackGame {
                             // Continue with rendering below
                         } else {
                             this.log('ERROR: Still no hand after refresh', 'error');
-                            this.showMessage('Error: No hand data received', 'error');
+                            this.ui.showMessage('Error: No hand data received', 'error');
                             return;
                         }
                     } catch (refreshError) {
                         this.log(`ERROR refreshing game state: ${refreshError.message}`, 'error');
-                        this.showMessage('Error: Could not refresh game state', 'error');
+                        this.ui.showMessage('Error: Could not refresh game state', 'error');
                         return;
                     }
                 }
@@ -2405,7 +1414,7 @@ class BlackjackGame {
                 const finalPlayerHand = finalHandsArray[finalSafeIndex];
                 if (!finalPlayerHand) {
                     this.log('ERROR: Player hand still missing after refresh', 'error');
-                    this.showMessage('Error: No hand data received', 'error');
+                    this.ui.showMessage('Error: No hand data received', 'error');
                     return;
                 }
                 
@@ -2425,23 +1434,23 @@ class BlackjackGame {
                 } else {
                     this.log('ERROR: No cards in player hand after hit', 'error');
                     this.log(`Hand structure: ${JSON.stringify(handToUse)}`, 'error');
-                    this.showMessage('Error: No cards received', 'error');
+                    this.ui.showMessage('Error: No cards received', 'error');
                 }
                 
                 // Check for 5 Card Charlie first (before bust check)
                 if (result.charlie) {
                     this.log(`🎉 5 CARD CHARLIE! You win! (Value: ${handToUse.value})`, 'win');
-                    this.showMessage('5 Card Charlie! You win!', 'win');
+                    this.ui.showMessage('5 Card Charlie! You win!', 'win');
                     if (result.game_over) {
                         await this.endGame();
                     }
                 } else if (handToUse.is_bust) {
                     this.log(`PLAYER BUSTED! Final value: ${handToUse.value}`, 'bust');
-                    this.showMessage(`Bust! You lose. (Value: ${handToUse.value})`, 'error');
+                    this.ui.showMessage(`Bust! You lose. (Value: ${handToUse.value})`, 'error');
                     await this.endGame();
                 } else if (handToUse.is_blackjack) {
                     this.log('Player got BLACKJACK after hit!', 'win');
-                    this.showMessage('Blackjack!', 'win');
+                    this.ui.showMessage('Blackjack!', 'win');
                     await this.endGame();
                 } else if (this.gameState.state === 'game_over') {
                     // Game ended for some other reason
@@ -2453,14 +1462,14 @@ class BlackjackGame {
                 }
             } else {
                 this.log(`Hit failed: ${result.error || result.message}`, 'error');
-                this.showMessage(result.error || result.message || 'Hit failed', 'error');
+                this.ui.showMessage(result.error || result.message || 'Hit failed', 'error');
             }
         } catch (error) {
             this.log(`Hit error: ${error.message}`, 'error');
-            this.showMessage(`Error: ${error.message}`, 'error');
+            this.ui.showMessage(`Error: ${error.message}`, 'error');
         } finally {
             // hideLoading() will set isProcessing = false and call updateButtonStates()
-            this.hideLoading();
+            this.ui.hideLoading();
         }
     }
 
@@ -2481,7 +1490,7 @@ class BlackjackGame {
         const playerHand = this.gameState?.player?.hands?.[this.gameState.player.current_hand_index];
         const playerValue = playerHand?.value || 0;
         this.log(`Player STANDS with value: ${playerValue}`, 'action');
-        this.setActionStatus('standing');
+        this.ui.setActionStatus('standing');
         
         // Check if standing is a bad decision (11 or less)
         const heckleAssessment = this.evaluateStandDecision(playerHand);
@@ -2491,15 +1500,15 @@ class BlackjackGame {
         }
         
         try {
-            this.showLoading();
-            const result = await this.apiCall('/api/stand', 'POST', {
+            this.ui.showLoading();
+            const result = await this.apiClient.stand({
                 game_id: this.gameId
             });
             
             if (result.success) {
                 this.log('Stand API call successful', 'success');
                 this.updateGameState(result.game_state);
-                this.updateButtonStates();
+                this.ui.updateButtonStates();
                 
                 this.log(`After stand - State: ${this.gameState.state}, Result: ${this.gameState.result}`, 'action');
                 
@@ -2516,13 +1525,13 @@ class BlackjackGame {
                 }
             } else {
                 this.log(`Stand failed: ${result.error || result.message}`, 'error');
-                this.showMessage(result.error || result.message || 'Stand failed', 'error');
+                this.ui.showMessage(result.error || result.message || 'Stand failed', 'error');
             }
         } catch (error) {
             this.log(`Stand error: ${error.message}`, 'error');
-            this.showMessage(`Error: ${error.message}`, 'error');
+            this.ui.showMessage(`Error: ${error.message}`, 'error');
         } finally {
-            this.hideLoading();
+            this.ui.hideLoading();
         }
     }
 
@@ -2543,18 +1552,18 @@ class BlackjackGame {
         const playerHand = this.gameState?.player?.hands?.[this.gameState.player.current_hand_index];
         const betAmount = playerHand?.bet || 0;
         this.log(`Player SURRENDERS hand with bet: $${betAmount}`, 'action');
-        this.setActionStatus('surrendering');
+        this.ui.setActionStatus('surrendering');
         
         try {
-            this.showLoading();
-            const result = await this.apiCall('/api/surrender', 'POST', {
+            this.ui.showLoading();
+            const result = await this.apiClient.surrender({
                 game_id: this.gameId
             });
             
             if (result.success) {
                 this.log('Surrender API call successful', 'success');
                 this.updateGameState(result.game_state);
-                this.updateButtonStates();
+                this.ui.updateButtonStates();
                 
                 this.log(`After surrender - State: ${this.gameState.state}, Result: ${this.gameState.result}`, 'action');
                 
@@ -2567,17 +1576,17 @@ class BlackjackGame {
                 }
                 
                 if (result.message) {
-                    this.showMessage(result.message, 'success');
+                    this.ui.showMessage(result.message, 'success');
                 }
             } else {
                 this.log(`Surrender failed: ${result.error || result.message}`, 'error');
-                this.showMessage(result.error || result.message || 'Surrender failed', 'error');
+                this.ui.showMessage(result.error || result.message || 'Surrender failed', 'error');
             }
         } catch (error) {
             this.log(`Surrender error: ${error.message}`, 'error');
-            this.showMessage(`Error: ${error.message}`, 'error');
+            this.ui.showMessage(`Error: ${error.message}`, 'error');
         } finally {
-            this.hideLoading();
+            this.ui.hideLoading();
         }
     }
 
@@ -2587,11 +1596,11 @@ class BlackjackGame {
     async playerDoubleDown() {
         if (!this.gameId || this.isProcessing) return;
         
-        this.setActionStatus('double down');
+        this.ui.setActionStatus('double down');
         
         try {
-            this.showLoading();
-            const result = await this.apiCall('/api/double_down', 'POST', {
+            this.ui.showLoading();
+            const result = await this.apiClient.doubleDown({
                 game_id: this.gameId
             });
             
@@ -2620,11 +1629,11 @@ class BlackjackGame {
                     this.renderHands();
                 }
                 
-                this.updateButtonStates();
+                this.ui.updateButtonStates();
                 
                 // If current hand is from split aces, surface a clear hint
                 if (playerHand?.is_from_split_aces) {
-                    this.setActionStatus('split aces: one card only', 4000);
+                    this.ui.setActionStatus('split aces: one card only', 4000);
                 }
                 
                 // Double down automatically hits once and stands
@@ -2632,13 +1641,13 @@ class BlackjackGame {
             } else {
                 // Show error message if double down failed
                 this.log(`Double down failed: ${result.error || result.message}`, 'error');
-                this.setActionStatus(result.error || result.message || 'Double down failed', 3000);
+                this.ui.setActionStatus(result.error || result.message || 'Double down failed', 3000);
             }
         } catch (error) {
             this.log(`Double down error: ${error.message}`, 'error');
-            this.setActionStatus(`Error: ${error.message}`, 3000);
+            this.ui.setActionStatus(`Error: ${error.message}`, 3000);
         } finally {
-            this.hideLoading();
+            this.ui.hideLoading();
         }
     }
 
@@ -2648,24 +1657,24 @@ class BlackjackGame {
     async playerSplit() {
         if (!this.gameId || this.isProcessing) return;
         
-        this.setActionStatus('splitting hand');
+        this.ui.setActionStatus('splitting hand');
         
         try {
-            this.showLoading();
-            const result = await this.apiCall('/api/split', 'POST', {
+            this.ui.showLoading();
+            const result = await this.apiClient.split({
                 game_id: this.gameId
             });
             
             if (result.success) {
                 this.updateGameState(result.game_state);
                 this.renderHands();
-                this.updateButtonStates();
-                this.showMessage('Hand split! Continue playing.');
+                this.ui.updateButtonStates();
+                this.ui.showMessage('Hand split! Continue playing.');
             }
         } catch (error) {
             this.log(`Split error: ${error.message}`, 'error');
         } finally {
-            this.hideLoading();
+            this.ui.hideLoading();
         }
     }
 
@@ -2673,7 +1682,7 @@ class BlackjackGame {
      * Play dealer turn
      */
     async playDealerTurn() {
-        this.showMessage('Dealer playing...');
+        this.ui.showMessage('Dealer playing...');
         
         // Check if we're in auto mode - skip delays if so
         const isAutoMode = this.gameState?.auto_mode?.active || false;
@@ -2736,7 +1745,7 @@ class BlackjackGame {
         this.renderHands();
         
         // Force update hand values after rendering to ensure correct display
-        this.updateHandValues();
+        this.ui.updateHandValues();
         
         // Show result message and log winner
         const result = this.gameState?.result;
@@ -2813,22 +1822,22 @@ class BlackjackGame {
                     const formattedInsuranceLoss = insuranceOutcome.amount.toLocaleString();
                     const winMessage = `You Win! +$${formattedWinProfit}`;
                     // Show win in green and insurance loss in red
-                    this.showMessageWithColors(`${winMessage} 🎉, `, '#28a745', `Ins Lost: $${formattedInsuranceLoss}`, '#dc3545');
+                    this.ui.showMessageWithColors(`${winMessage} 🎉, `, '#28a745', `Ins Lost: $${formattedInsuranceLoss}`, '#dc3545');
                 } else {
                     // Insurance was paid (shouldn't happen on a win, but handle it)
                     const formattedInsurance = insuranceOutcome.amount.toLocaleString();
                     const winMessage = `You Win! +$${formattedWinProfit}`;
                     // Show both in green
-                    this.showMessageWithColors(`${winMessage} 🎉, `, '#28a745', `Ins Paid: $${formattedInsurance}`, '#28a745');
+                    this.ui.showMessageWithColors(`${winMessage} 🎉, `, '#28a745', `Ins Paid: $${formattedInsurance}`, '#28a745');
                 }
             } else {
                 // No insurance involved
                 const message = `You Win! +$${formattedWinProfit} 🎉`;
-                this.showMessage(message, 'win');
+                this.ui.showMessage(message, 'win');
             }
         } else if (result === 'blackjack') {
             this.log('ROUND WINNER: PLAYER WINS WITH BLACKJACK!', 'win');
-            await this.showBlackjackCelebration();
+            await this.ui.showBlackjackCelebration();
             // For blackjack, always calculate the amount won from bet amount (3:2 payout = 1.5x bet profit)
             // This is more reliable than using balanceChange which may be incorrect
             const handsArray = this.gameState?.player?.hands || [];
@@ -2848,15 +1857,15 @@ class BlackjackGame {
                 if (insuranceOutcome.paid === false) {
                     // Blackjack win but insurance was lost
                     const formattedInsuranceLoss = insuranceOutcome.amount.toLocaleString();
-                    this.showMessageWithColors(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉, `, '#28a745', `Ins Lost: $${formattedInsuranceLoss}`, '#dc3545');
+                    this.ui.showMessageWithColors(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉, `, '#28a745', `Ins Lost: $${formattedInsuranceLoss}`, '#dc3545');
                 } else {
                     // Insurance was paid (shouldn't happen with blackjack, but handle it)
                     const formattedInsurance = insuranceOutcome.amount.toLocaleString();
-                    this.showMessageWithColors(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉, `, '#28a745', `Ins Paid: $${formattedInsurance}`, '#28a745');
+                    this.ui.showMessageWithColors(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉, `, '#28a745', `Ins Paid: $${formattedInsurance}`, '#28a745');
                 }
             } else {
                 // No insurance involved
-                this.showMessage(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉`, 'win');
+                this.ui.showMessage(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉`, 'win');
             }
         } else if (result === 'loss') {
             this.log('ROUND WINNER: DEALER WINS (Player loses)', 'bust');
@@ -2877,23 +1886,23 @@ class BlackjackGame {
                     // Insurance was paid (dealer had blackjack)
                     const formattedInsurance = insuranceOutcome.amount.toLocaleString();
                     // Show loss in red and insurance payout in green
-                    this.showMessageWithColors(`Lost $${formattedLoss}, `, '#dc3545', `Ins Paid: $${formattedInsurance}`, '#28a745');
+                    this.ui.showMessageWithColors(`Lost $${formattedLoss}, `, '#dc3545', `Ins Paid: $${formattedInsurance}`, '#28a745');
                 } else {
                     // Insurance was lost (dealer didn't have blackjack)
                     const formattedInsuranceLoss = insuranceOutcome.amount.toLocaleString();
                     // Show both losses in red
-                    this.showMessageWithColors(`Lost $${formattedLoss}, `, '#dc3545', `Ins Lost: $${formattedInsuranceLoss}`, '#dc3545');
+                    this.ui.showMessageWithColors(`Lost $${formattedLoss}, `, '#dc3545', `Ins Lost: $${formattedInsuranceLoss}`, '#dc3545');
                 }
             } else {
                 // No insurance involved
-                this.showMessage(`You Lose -$${formattedLoss}`, 'error');
+                this.ui.showMessage(`You Lose -$${formattedLoss}`, 'error');
             }
         } else if (result === 'push') {
             this.log('ROUND RESULT: PUSH (Tie)', 'action');
-            this.showMessage('Push - It\'s a tie! $0', 'info');
+            this.ui.showMessage('Push - It\'s a tie! $0', 'info');
         } else {
             this.log(`ROUND ENDED: Unknown result "${result}"`, 'warn');
-            this.showMessage('Game Over', 'info');
+            this.ui.showMessage('Game Over', 'info');
         }
         
         // Calculate expected balance change based on result
@@ -2954,8 +1963,8 @@ class BlackjackGame {
         
         this.log(`Game ended. Result: ${result}, New balance: $${balance}`, 'action');
         
-        this.hideGameControls();
-        this.showBettingArea();
+        this.ui.hideGameControls();
+        this.ui.showBettingArea();
         this.log('Ready for next round - adjust your bet and deal when ready', 'action');
     }
 
@@ -2966,10 +1975,10 @@ class BlackjackGame {
         if (!this.gameId) return;
         
         try {
-            const result = await this.apiCall(`/api/game_state?game_id=${this.gameId}`, 'GET');
+            const result = await this.apiClient.fetchGameState(this.gameId);
             if (result.success) {
                 this.updateGameState(result.game_state);
-                this.updateButtonStates();
+                this.ui.updateButtonStates();
             }
         } catch (error) {
             this.log(`Update state error: ${error.message}`, 'error');
@@ -2990,7 +1999,7 @@ class BlackjackGame {
         
         // Update insurance UI
         this.updateInsuranceUI();
-        this.updateAutoStatusUI();
+        this.ui.updateAutoStatusUI();
         
         // Update cut card display
         this.updateCutCardDisplay();
@@ -3030,12 +2039,12 @@ class BlackjackGame {
             const sig = `${outcome.paid}:${outcome.amount}`;
             if (sig !== this.lastInsuranceOutcomeSig) {
                 if (outcome.paid) {
-                    this.setActionStatus(`insurance paid $${outcome.amount}`, 5000);
-                    this.showMessage(`Insurance paid $${outcome.amount}`, 'success');
+                    this.ui.setActionStatus(`insurance paid $${outcome.amount}`, 5000);
+                    this.ui.showMessage(`Insurance paid $${outcome.amount}`, 'success');
                     this.addInsuranceHistory(true, outcome.amount);
                 } else if (outcome.paid === false) {
-                    this.setActionStatus('insurance lost', 4000);
-                    this.showMessage('Insurance lost', 'error');
+                    this.ui.setActionStatus('insurance lost', 4000);
+                    this.ui.showMessage('Insurance lost', 'error');
                     this.addInsuranceHistory(false, outcome.amount);
                 }
                 this.lastInsuranceOutcomeSig = sig;
@@ -3043,7 +2052,7 @@ class BlackjackGame {
         }
         
         // Update hand values
-        this.updateHandValues();
+        this.ui.updateHandValues();
         
         // Don't call updateButtonStates() here - it might be called while isProcessing is true
         // Call it explicitly after hideLoading() or when you know isProcessing is false
@@ -3086,7 +2095,7 @@ class BlackjackGame {
             btn.setAttribute('aria-disabled', 'false');
             btn.title = 'Insurance available';
             decline.style.display = 'inline-block';
-            this.setActionStatus('insurance decision required');
+            this.ui.setActionStatus('insurance decision required');
 
             const announcementKey = this.gameId ?? '__no_game__';
             if (this.insuranceAnnouncedForGameId !== announcementKey) {
@@ -3106,7 +2115,7 @@ class BlackjackGame {
             btn.setAttribute('aria-disabled', 'false');
             btn.title = 'Even money available';
             decline.style.display = 'inline-block';
-            this.setActionStatus('even money available');
+            this.ui.setActionStatus('even money available');
         } else {
             btn.textContent = 'Insurance – pays 2:1';
             btn.dataset.decision = '';
@@ -3117,7 +2126,7 @@ class BlackjackGame {
             btn.title = 'Available when dealer shows Ace';
             decline.style.display = 'none';
             // Clear action status when insurance offer is no longer active
-            this.clearActionStatus();
+            this.ui.clearActionStatus();
         }
     }
 
@@ -3243,107 +2252,20 @@ class BlackjackGame {
         });
     }
 
-    /**
-     * Update table sign display with current rules
-     */
-    updateTableSign() {
-        const signContent = document.getElementById('table-sign-content');
-        if (!signContent) return;
-
-        // Use game state if available, otherwise use defaults
-        const limits = this.gameState?.table_limits || { min_bet: 5, max_bet: 500 };
-        const dealerHitsSoft17 = this.gameState?.dealer_hits_soft_17 || this.dealerHitsSoft17 || false;
-
-        // Build sign text array
-        const signTexts = [
-            'BLACKJACK PAYS 3:2',
-            dealerHitsSoft17 ? 'DEALER HITS SOFT 17' : 'DEALER STANDS ON 17',
-            `TABLE LIMITS $${limits.min_bet} - $${limits.max_bet}`
-        ];
-
-        // Clear existing content
-        signContent.innerHTML = '';
-
-        // Add text elements with separators
-        signTexts.forEach((text, index) => {
-            const textSpan = document.createElement('span');
-            textSpan.className = 'sign-text';
-            textSpan.textContent = text;
-            signContent.appendChild(textSpan);
-
-            // Add separator between items (not after last)
-            if (index < signTexts.length - 1) {
-                const separator = document.createElement('span');
-                separator.className = 'sign-separator';
-                separator.textContent = '•';
-                signContent.appendChild(separator);
-            }
-        });
-
-        // Check if content overflows and enable marquee if needed
-        setTimeout(() => {
-            const sign = document.getElementById('table-sign');
-            if (sign && signContent) {
-                const signWidth = sign.offsetWidth - 40; // Account for padding
-                const contentWidth = signContent.scrollWidth;
-                
-                if (contentWidth > signWidth) {
-                    // Content overflows - enable marquee
-                    sign.classList.add('marquee-mode');
-                    // Store content text for ::after pseudo-element duplication
-                    const fullText = Array.from(signContent.querySelectorAll('.sign-text'))
-                        .map(span => span.textContent)
-                        .join(' • ');
-                    signContent.setAttribute('data-content', fullText);
-                } else {
-                    // Content fits - disable marquee
-                    sign.classList.remove('marquee-mode');
-                    signContent.removeAttribute('data-content');
-                }
-            }
-        }, 100);
-    }
-
     prefillAutoModeForm() {
-        const betInput = document.getElementById('auto-bet-input');
-        const handsInput = document.getElementById('auto-hands-input');
-        const radios = document.querySelectorAll('input[name="auto-insurance"]');
-        if (!betInput || !handsInput || radios.length === 0) return;
-        const defaultBet = this.autoSettings?.defaultBet ?? this.defaultBetAmount ?? 100;
-        betInput.value = defaultBet || 100;
-        const hands = this.autoSettings?.hands ?? 5;
-        handsInput.value = hands;
-        const insurancePref = this.autoSettings?.insurance ?? 'never';
-        radios.forEach(radio => {
-            radio.checked = radio.value === insurancePref;
-        });
-        const errorEl = document.getElementById('auto-error');
-        if (errorEl) errorEl.textContent = '';
+        this.settingsManager.prefillAutoModeForm();
     }
 
     toggleAutoModePanel() {
-        if (this.autoPanelVisible) {
-            this.closeAutoModePanel();
-        } else {
-            this.openAutoModePanel();
-        }
+        this.settingsManager.toggleAutoModePanel();
     }
 
     openAutoModePanel() {
-        const panel = document.getElementById('auto-mode-panel');
-        if (!panel) return;
-        this.autoPanelVisible = true;
-        panel.style.display = 'block';
-        this.prefillAutoModeForm();
+        this.settingsManager.openAutoModePanel();
     }
 
     closeAutoModePanel() {
-        const panel = document.getElementById('auto-mode-panel');
-        if (!panel) return;
-        this.autoPanelVisible = false;
-        panel.style.display = 'none';
-        const errorEl = document.getElementById('auto-error');
-        if (errorEl) errorEl.textContent = '';
+        this.settingsManager.closeAutoModePanel();
     }
 
     async handleAutoModeStart() {
@@ -3377,62 +2299,30 @@ class BlackjackGame {
         };
         try {
             if (autoStartBtn) autoStartBtn.disabled = true;
-            this.showLoading();
-            const result = await this.apiCall('/api/auto_mode/start', 'POST', payload);
+            this.ui.showLoading();
+            const result = await this.apiClient.startAutoMode(payload);
             if (result.success) {
                 this.updateGameState(result.game_state);
-                this.saveAutoSettings({ defaultBet, hands, insurance: insuranceMode });
+                this.stateManager.saveAutoSettings({ defaultBet, hands, insurance: insuranceMode });
                 const autoStatus = result.game_state?.auto_mode?.status;
                 if (autoStatus) {
-                    this.showMessage(autoStatus, 'info');
+                    this.ui.showMessage(autoStatus, 'info');
                 } else {
-                    this.showMessage(result.message || 'Auto mode complete', 'info');
+                    this.ui.showMessage(result.message || 'Auto mode complete', 'info');
                 }
                 this.closeAutoModePanel();
             } else {
                 const errorMsg = result.error || result.message || 'Auto mode failed';
-                this.showMessage(errorMsg, 'error');
+                this.ui.showMessage(errorMsg, 'error');
                 if (errorEl) errorEl.textContent = errorMsg;
             }
         } catch (error) {
             if (errorEl) errorEl.textContent = error.message || 'Auto mode failed';
         } finally {
-            this.hideLoading();
+            this.ui.hideLoading();
             if (autoStartBtn) autoStartBtn.disabled = false;
-            this.updateButtonStates();
-            this.updateAutoStatusUI();
-        }
-    }
-
-    updateAutoStatusUI() {
-        const statusEl = document.getElementById('auto-status');
-        const statusTextEl = document.getElementById('auto-status-text');
-        const downloadBtn = document.getElementById('auto-download-log-btn');
-        
-        if (!statusEl) return;
-        
-        const autoMode = this.gameState?.auto_mode;
-        if (autoMode?.status) {
-            statusEl.style.display = 'block';
-            if (statusTextEl) {
-                statusTextEl.textContent = autoMode.status;
-            }
-            
-            // Show download button if log file is available
-            if (downloadBtn && autoMode.log_filename) {
-                downloadBtn.style.display = 'inline-block';
-                downloadBtn.onclick = () => this.downloadAutoModeLog(autoMode.log_filename);
-            } else if (downloadBtn) {
-                downloadBtn.style.display = 'none';
-            }
-        } else {
-            statusEl.style.display = 'none';
-            if (statusTextEl) {
-                statusTextEl.textContent = '';
-            }
-            if (downloadBtn) {
-                downloadBtn.style.display = 'none';
-            }
+            this.ui.updateButtonStates();
+            this.ui.updateAutoStatusUI();
         }
     }
 
@@ -3441,36 +2331,39 @@ class BlackjackGame {
             this.log('Cannot download log: missing game ID or filename', 'error');
             return;
         }
-        
-        const url = `/api/auto_mode/download_log?game_id=${encodeURIComponent(this.gameState.game_id)}&filename=${encodeURIComponent(logFilename)}`;
-        window.location.href = url;
+        const url = this.apiClient.getAutoModeLogUrl(this.gameState.game_id, logFilename);
+        if (url) {
+            window.location.href = url;
+        } else {
+            this.log('Unable to build auto mode log URL', 'error');
+        }
     }
 
     async handleLogHand() {
         if (!this.gameId) {
-            this.showMessage('No active game', 'error');
+            this.ui.showMessage('No active game', 'error');
             return;
         }
         
         // Get current round_id before logging
         const currentRoundId = this.gameState?.latest_round_id;
         if (!currentRoundId) {
-            this.showMessage('No completed round to log', 'error');
+            this.ui.showMessage('No completed round to log', 'error');
             return;
         }
         
         // Check if this round has already been logged
         if (this.loggedRoundId === currentRoundId) {
-            this.showMessage('This hand has already been logged', 'warn');
+            this.ui.showMessage('This hand has already been logged', 'warn');
             return;
         }
         
         try {
-            this.showLoading();
+            this.ui.showLoading();
             const payload = {
                 game_id: this.gameId
             };
-            const result = await this.apiCall('/api/log_hand', 'POST', payload);
+            const result = await this.apiClient.logHand(payload);
             
             if (result.success) {
                 // Mark this round as logged and hide the button
@@ -3480,31 +2373,35 @@ class BlackjackGame {
                     logHandBtn.style.display = 'none';
                     logHandBtn.disabled = false; // Reset for next round
                 }
-                this.showMessage(result.message || 'Hand logged successfully', 'success');
+                this.ui.showMessage(result.message || 'Hand logged successfully', 'success');
                 this.updateGameState(result.game_state);
             } else {
-                this.showMessage(result.error || result.message || 'Failed to log hand', 'error');
+                this.ui.showMessage(result.error || result.message || 'Failed to log hand', 'error');
             }
         } catch (error) {
-            this.showMessage(error.message || 'Failed to log hand', 'error');
+            this.ui.showMessage(error.message || 'Failed to log hand', 'error');
         } finally {
-            this.hideLoading();
+            this.ui.hideLoading();
         }
     }
 
     downloadLogHand() {
         if (!this.gameId) {
-            this.showMessage('No active game', 'error');
+            this.ui.showMessage('No active game', 'error');
             return;
         }
         
-        const url = `/api/download_log_hand?game_id=${encodeURIComponent(this.gameId)}`;
-        window.location.href = url;
+        const url = this.apiClient.getLogHandUrl(this.gameId);
+        if (url) {
+            window.location.href = url;
+        } else {
+            this.log('Unable to build hand log URL', 'error');
+        }
     }
 
     async clearLogHand() {
         if (!this.gameId) {
-            this.showMessage('No active game', 'error');
+            this.ui.showMessage('No active game', 'error');
             return;
         }
         
@@ -3515,245 +2412,22 @@ class BlackjackGame {
         }
         
         try {
-            this.showLoading();
+            this.ui.showLoading();
             const payload = {
                 game_id: this.gameId
             };
-            const result = await this.apiCall('/api/clear_log_hand', 'POST', payload);
+            const result = await this.apiClient.clearLog(payload);
             
             if (result.success) {
-                this.showMessage(result.message || 'Log file cleared successfully', 'success');
+                this.ui.showMessage(result.message || 'Log file cleared successfully', 'success');
             } else {
-                this.showMessage(result.error || result.message || 'Failed to clear log file', 'error');
+                this.ui.showMessage(result.error || result.message || 'Failed to clear log file', 'error');
             }
         } catch (error) {
-            this.showMessage(error.message || 'Failed to clear log file', 'error');
+            this.ui.showMessage(error.message || 'Failed to clear log file', 'error');
         } finally {
-            this.hideLoading();
+            this.ui.hideLoading();
         }
-    }
-
-    /**
-     * Update hand value displays
-     */
-    updateHandValues() {
-        if (!this.gameState) return;
-        
-        // Player hand value - use safe index to handle out-of-bounds current_hand_index
-        const handsArray = this.gameState.player?.hands || [];
-        if (handsArray.length > 0) {
-            const requestedIndex = this.gameState.player?.current_hand_index || 0;
-            const safeIndex = (requestedIndex < handsArray.length) ? requestedIndex : Math.max(0, handsArray.length - 1);
-            const playerHand = handsArray[safeIndex];
-            
-            const playerValueElement = document.getElementById('player-value');
-            if (playerValueElement && playerHand) {
-                // Log for debugging if there's a mismatch
-                if (requestedIndex !== safeIndex) {
-                    this.log(`Hand value display - requested index ${requestedIndex} out of bounds, using ${safeIndex}`, 'warn');
-                }
-                
-                // Show value, and if busted, show it clearly
-                const valueText = playerHand.is_bust ? 
-                    `Value: ${playerHand.value} (BUST!)` : 
-                    `Value: ${playerHand.value}`;
-                playerValueElement.textContent = valueText;
-                
-                // Log the actual hand for debugging
-                this.log(`Player hand value displayed: ${playerHand.value}, bust: ${playerHand.is_bust}, cards: ${playerHand.cards?.length || 0}`, 'action');
-            } else if (playerValueElement && !playerHand) {
-                this.log(`ERROR: No player hand found at index ${safeIndex}`, 'error');
-            }
-        } else {
-            const playerValueElement = document.getElementById('player-value');
-            if (playerValueElement) {
-                this.log('ERROR: No player hands array found', 'error');
-            }
-        }
-        
-        // Dealer hand value
-        const dealerValueElement = document.getElementById('dealer-value');
-        if (dealerValueElement && this.gameState.dealer) {
-            if (this.gameState.dealer.hole_card_hidden) {
-                // Show only the visible cards value
-                const visibleValue = this.gameState.dealer.visible_value;
-                if (visibleValue !== null && visibleValue !== undefined) {
-                    dealerValueElement.textContent = `Value: ${visibleValue}`;
-                } else {
-                    dealerValueElement.textContent = 'Value: ?';
-                }
-            } else {
-                const dealerValue = this.gameState.dealer.full_value || this.gameState.dealer.value;
-                const dealerBust = this.gameState.dealer.is_bust;
-                const valueText = dealerBust ? 
-                    `Value: ${dealerValue} (BUST!)` : 
-                    `Value: ${dealerValue}`;
-                dealerValueElement.textContent = valueText;
-                this.log(`Dealer hand value displayed: ${dealerValue}, bust: ${dealerBust}`, 'action');
-            }
-        }
-    }
-
-    /**
-     * Update button states based on game state
-     */
-    updateButtonStates() {
-        if (!this.gameState) {
-            this.log('Cannot update button states: no gameState', 'warn');
-            return;
-        }
-        
-        // If game is over, disable all action buttons
-        if (this.gameState.state === 'game_over') {
-            this.log('Game over - disabling action buttons', 'action');
-            const hitBtn = document.getElementById('hit-btn');
-            const standBtn = document.getElementById('stand-btn');
-            const doubleBtn = document.getElementById('double-btn');
-            const splitBtn = document.getElementById('split-btn');
-            const surrenderBtn = document.getElementById('surrender-btn');
-            
-            if (hitBtn) {
-                hitBtn.disabled = true;
-                hitBtn.removeAttribute('title');
-                this.log('Hit button disabled (game over)', 'action');
-            } else {
-                this.log('ERROR: hit-btn element not found!', 'error');
-            }
-            if (standBtn) standBtn.disabled = true;
-            if (doubleBtn) {
-                doubleBtn.disabled = true;
-                doubleBtn.removeAttribute('title');
-            }
-            if (splitBtn) splitBtn.disabled = true;
-            if (surrenderBtn) {
-                surrenderBtn.disabled = true;
-                surrenderBtn.style.display = 'none';
-            }
-
-            const dealBtn = document.getElementById('deal-btn');
-            const autoActive = !!this.gameState.auto_mode?.active;
-            if (dealBtn) {
-                dealBtn.disabled = autoActive || this.isProcessing;
-                if (!dealBtn.disabled) {
-                    dealBtn.title = 'Deal the next hand';
-                } else if (autoActive) {
-                    dealBtn.title = 'auto mode running';
-                }
-            }
-
-            // Ensure betting UI is interactive again unless auto mode is active
-            if (!autoActive) {
-                document.querySelectorAll('.chip').forEach((chip) => {
-                    chip.disabled = false;
-                });
-                const clearBetBtn = document.getElementById('clear-bet-btn');
-                if (clearBetBtn) {
-                    clearBetBtn.disabled = false;
-                }
-            }
-            
-            return;
-        }
-        
-        const playerHand = this.gameState.player?.hands?.[this.gameState.player.current_hand_index];
-        const isSplitAces = !!playerHand?.is_from_split_aces;
-        const insuranceActive = !!this.gameState.insurance_offer_active || !!this.gameState.even_money_offer_active;
-        const autoActive = !!this.gameState.auto_mode?.active;
-        
-        // Enable/disable double down
-        const doubleBtn = document.getElementById('double-btn');
-        if (doubleBtn && playerHand) {
-            const canDouble = playerHand.can_double_down && this.gameState.state === 'player_turn' && !isSplitAces && !insuranceActive && !autoActive;
-            doubleBtn.disabled = !canDouble;
-            if (isSplitAces) {
-                doubleBtn.title = 'split aces: one card only';
-            } else if (insuranceActive) {
-                doubleBtn.title = 'insurance decision required';
-            } else if (autoActive) {
-                doubleBtn.title = 'auto mode running';
-            } else {
-                doubleBtn.removeAttribute('title');
-            }
-        }
-        
-        // Enable/disable split
-        const splitBtn = document.getElementById('split-btn');
-        if (splitBtn && playerHand) {
-            const canSplit = playerHand.can_split && this.gameState.state === 'player_turn' && !insuranceActive && !autoActive;
-            splitBtn.style.display = canSplit ? 'block' : 'none';
-            splitBtn.disabled = !canSplit;
-        }
-        
-        // Enable/disable surrender
-        const surrenderBtn = document.getElementById('surrender-btn');
-        if (surrenderBtn && playerHand) {
-            // Surrender only available on first action (exactly 2 cards, no actions taken)
-            const hasTwoCards = playerHand.cards && playerHand.cards.length === 2;
-            const canSurrender = hasTwoCards && 
-                                 this.gameState.state === 'player_turn' && 
-                                 !insuranceActive && 
-                                 !autoActive && 
-                                 !isSplitAces &&
-                                 !playerHand.is_doubled_down &&
-                                 !playerHand.is_surrendered;
-            surrenderBtn.style.display = canSurrender ? 'block' : 'none';
-            surrenderBtn.disabled = !canSurrender;
-            if (isSplitAces) {
-                surrenderBtn.title = 'not allowed on split aces';
-            } else if (insuranceActive) {
-                surrenderBtn.title = 'insurance decision required';
-            } else if (autoActive) {
-                surrenderBtn.title = 'auto mode running';
-            } else if (!hasTwoCards) {
-                surrenderBtn.title = 'surrender only available before taking any actions';
-            } else {
-                surrenderBtn.removeAttribute('title');
-            }
-        }
-        
-        // Enable/disable hit and stand
-        const hitBtn = document.getElementById('hit-btn');
-        const standBtn = document.getElementById('stand-btn');
-        const isPlayerTurn = this.gameState.state === 'player_turn';
-        
-        this.log(`Button state update - isPlayerTurn: ${isPlayerTurn}, state: ${this.gameState.state}, isProcessing: ${this.isProcessing}`, 'action');
-        
-        if (!hitBtn) {
-            this.log('ERROR: hit-btn element not found in DOM!', 'error');
-        } else {
-            const shouldBeDisabled = !isPlayerTurn || this.isProcessing || isSplitAces || insuranceActive || autoActive;
-            hitBtn.disabled = shouldBeDisabled;
-            if (isSplitAces) {
-                hitBtn.title = 'split aces: one card only';
-            } else if (insuranceActive) {
-                hitBtn.title = 'insurance decision required';
-                this.setActionStatus('insurance decision required', 3000);
-            } else if (autoActive) {
-                hitBtn.title = 'auto mode running';
-            } else {
-                hitBtn.removeAttribute('title');
-            }
-            this.log(`Hit button - disabled: ${hitBtn.disabled}, shouldBeDisabled: ${shouldBeDisabled}`, 'action');
-        }
-        
-        if (!standBtn) {
-            this.log('ERROR: stand-btn element not found!', 'error');
-        } else {
-            const shouldBeDisabled = !isPlayerTurn || this.isProcessing || insuranceActive || autoActive;
-            standBtn.disabled = shouldBeDisabled;
-            if (autoActive) {
-                standBtn.title = 'auto mode running';
-            } else if (insuranceActive) {
-                standBtn.title = 'insurance decision required';
-            } else {
-                standBtn.removeAttribute('title');
-            }
-        }
-        
-        // Disable new game/refresh buttons when auto active
-        const autoDisabled = autoActive;
-        const refreshBtn = document.getElementById('refresh-bankroll-btn');
-        if (refreshBtn) refreshBtn.disabled = autoDisabled;
     }
 
     /**
@@ -3835,124 +2509,6 @@ class BlackjackGame {
     }
 
     /**
-     * Show betting area (enabled - for active betting)
-     */
-    showBettingArea() {
-        const bettingArea = document.getElementById('betting-area');
-        if (bettingArea) {
-            bettingArea.style.display = 'block';
-            bettingArea.classList.remove('action-mode');
-            this.log('Betting area shown and enabled', 'action');
-        }
-        
-        const bettingLabel = document.getElementById('betting-label');
-        if (bettingLabel) {
-            bettingLabel.textContent = 'Place Your Bet';
-        }
-        
-        const gameControls = document.getElementById('game-controls');
-        if (gameControls) {
-            gameControls.style.display = 'none';
-        }
-        
-        const dealBtn = document.getElementById('deal-btn');
-        if (dealBtn) {
-            dealBtn.disabled = false;
-        }
-        
-        // Enable all chip buttons
-        document.querySelectorAll('.chip').forEach(chip => {
-            chip.disabled = false;
-        });
-        
-        // Enable Clear Bet button
-        const clearBetBtn = document.getElementById('clear-bet-btn');
-        if (clearBetBtn) {
-            clearBetBtn.disabled = false;
-        }
-    }
-
-    /**
-     * Hide betting area
-     */
-    hideBettingArea() {
-        const bettingArea = document.getElementById('betting-area');
-        if (bettingArea) {
-            bettingArea.style.display = 'block';
-            bettingArea.classList.add('action-mode');
-            this.log('Betting area switched to action mode', 'action');
-        }
-        
-        // Disable chip buttons when betting area is hidden
-        document.querySelectorAll('.chip').forEach(chip => {
-            chip.disabled = true;
-        });
-        
-        // Disable Deal Cards button
-        const dealBtn = document.getElementById('deal-btn');
-        if (dealBtn) {
-            dealBtn.disabled = true;
-        }
-        
-        const bettingLabel = document.getElementById('betting-label');
-        if (bettingLabel) {
-            bettingLabel.textContent = 'Choose Your Action';
-        }
-        
-        const gameControls = document.getElementById('game-controls');
-        if (gameControls) {
-            gameControls.style.display = 'flex';
-        }
-        
-        // Disable Clear Bet button
-        const clearBetBtn = document.getElementById('clear-bet-btn');
-        if (clearBetBtn) {
-            clearBetBtn.disabled = true;
-        }
-    }
-
-    /**
-     * Show game controls
-     */
-    showGameControls() {
-        const controlsElement = document.getElementById('game-controls');
-        const bettingArea = document.getElementById('betting-area');
-        if (bettingArea) {
-            bettingArea.classList.add('action-mode');
-        }
-        const bettingLabel = document.getElementById('betting-label');
-        if (bettingLabel) {
-            bettingLabel.textContent = 'Choose Your Action';
-        }
-        const dealBtn = document.getElementById('deal-btn');
-        if (dealBtn) {
-            dealBtn.disabled = true;
-        }
-        document.querySelectorAll('.chip').forEach(chip => {
-            chip.disabled = true;
-        });
-        if (controlsElement) {
-            controlsElement.style.display = 'flex';
-            this.log('Game controls shown (Hit, Stand, Double Down)', 'action');
-        } else {
-            this.log('ERROR: game-controls element not found!', 'error');
-        }
-    }
-
-    /**
-     * Hide game controls
-     */
-    hideGameControls() {
-        const controlsElement = document.getElementById('game-controls');
-        if (controlsElement) {
-            controlsElement.style.display = 'none';
-            this.log('Game controls hidden', 'action');
-        } else {
-            this.log('ERROR: game-controls element not found!', 'error');
-        }
-    }
-
-    /**
      * Add game result to history
      */
     addGameHistory(result, bet, balanceChange) {
@@ -3989,101 +2545,7 @@ class BlackjackGame {
             this.gameHistory.pop();
         }
         
-        this.updateHistoryDisplay();
-    }
-
-    /**
-     * Update the history panel display
-     */
-    updateHistoryDisplay() {
-        const historyList = document.getElementById('history-list');
-        if (!historyList) return;
-        
-        // Clear the list
-        historyList.innerHTML = '';
-        
-        if (this.gameHistory.length === 0) {
-            historyList.innerHTML = '<div class="history-item-empty">No games yet</div>';
-            return;
-        }
-        
-        // Add items (already in reverse chronological order due to unshift)
-        this.gameHistory.forEach(item => {
-            const historyItem = document.createElement('div');
-            historyItem.className = `history-item ${item.result}`;
-            
-            // Format result display
-            let resultEmoji = '';
-            if (item.result === 'win' || item.result === 'blackjack' || item.result === 'insurance_win') {
-                resultEmoji = '✅';
-            } else if (item.result === 'loss' || item.result === 'insurance_loss') {
-                resultEmoji = '❌';
-            } else if (item.result === 'push') {
-                resultEmoji = '🤝';
-            }
-            
-            const resultText = (item.result === 'blackjack') ? 'BLACKJACK' : item.displayResult;
-            
-            historyItem.innerHTML = `
-                <span class="history-result">${resultEmoji} ${resultText}</span>
-                <span class="history-amount">${item.amountDisplay}</span>
-            `;
-            
-            historyList.appendChild(historyItem);
-        });
-    }
-
-    /**
-     * Load default bet from localStorage
-     */
-    loadDefaultBet() {
-        try {
-            const stored = localStorage.getItem(this.defaultBetStorageKey);
-            if (stored) {
-                this.defaultBetAmount = parseInt(stored);
-                this.log(`💾 Default bet loaded: $${this.defaultBetAmount}`, 'info');
-            }
-        } catch (error) {
-            console.warn('Failed to load default bet:', error);
-        }
-    }
-
-    loadAutoSettings() {
-        try {
-            const stored = localStorage.getItem(this.autoSettingsKey);
-            if (!stored) return { defaultBet: null, hands: 5, insurance: 'never' };
-            const parsed = JSON.parse(stored);
-            return {
-                defaultBet: parsed?.defaultBet ?? null,
-                hands: parsed?.hands ?? 5,
-                insurance: parsed?.insurance ?? 'never'
-            };
-        } catch (error) {
-            console.warn('Failed to load auto settings:', error);
-            return { defaultBet: null, hands: 5, insurance: 'never' };
-        }
-    }
-
-    saveAutoSettings(settings) {
-        try {
-            localStorage.setItem(this.autoSettingsKey, JSON.stringify(settings));
-            this.autoSettings = settings;
-        } catch (error) {
-            console.warn('Failed to save auto settings:', error);
-        }
-    }
-
-    /**
-     * Save default bet to localStorage
-     */
-    saveDefaultBet() {
-        try {
-            if (this.defaultBetAmount) {
-                localStorage.setItem(this.defaultBetStorageKey, this.defaultBetAmount.toString());
-            }
-        } catch (error) {
-            console.warn('Failed to save default bet:', error);
-        }
+        this.ui.updateHistoryDisplay();
     }
 
     /**
@@ -4091,10 +2553,10 @@ class BlackjackGame {
      */
     setDefaultBet(value) {
         this.defaultBetAmount = value;
-        this.saveDefaultBet();
+        this.stateManager.saveDefaultBet(value);
         this.updateDefaultBetDisplay();
         this.log(`💰 Default bet set to $${value}`, 'action');
-        this.showMessage(`Default bet set to $${value}`, 'success');
+        this.ui.showMessage(`Default bet set to $${value}`, 'success');
     }
 
     /**
@@ -4129,7 +2591,7 @@ class BlackjackGame {
         };
         this.gameHistory.unshift(historyItem);
         if (this.gameHistory.length > 5) this.gameHistory.pop();
-        this.updateHistoryDisplay();
+        this.ui.updateHistoryDisplay();
     }
 }
 

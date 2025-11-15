@@ -26,15 +26,15 @@ if ! python3 -c "import flask" 2>/dev/null; then
     pip install -r requirements.txt
 fi
 
-# Check if port 5000 is in use and kill it if needed
-PORT_CHECK=$(lsof -ti:5000 2>/dev/null)
+# Check if port 5003 is in use and kill it if needed
+PORT_CHECK=$(lsof -ti:5003 2>/dev/null)
 if [ ! -z "$PORT_CHECK" ]; then
-    echo "⚠️  Port 5000 is in use (PID: $PORT_CHECK)"
-    read -p "Kill the process using port 5000? (y/n) " -n 1 -r
+    echo "⚠️  Port 5003 is in use (PID: $PORT_CHECK)"
+    read -p "Kill the process using port 5003? (y/n) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         kill -9 $PORT_CHECK 2>/dev/null
-        echo "✅ Killed process on port 5000"
+        echo "✅ Killed process on port 5003"
         sleep 1
     else
         echo "ℹ️  Continuing with port detection (app will find a free port)..."
