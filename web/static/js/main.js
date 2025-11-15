@@ -109,6 +109,53 @@ function initializeGame() {
 
     // Initialize the rules panel UI
     rulesPanel.init();
+
+    // Greet the player (wait for voices to be ready if needed)
+    const greetPlayer = () => {
+        if (!game.voiceEnabled) {
+            return;
+        }
+
+        if (game.ui) {
+            game.ui.showMessage('Are you feeling lucky today?');
+        }
+
+        if (!game.useSpeechSynthesis || typeof window === 'undefined' || !window.speechSynthesis) {
+            return;
+        }
+
+        const synth = window.speechSynthesis;
+
+        const trySpeakGreeting = () => {
+            if (!game.hecklerVoice) {
+                return false;
+            }
+            game.previewHecklerVoice(true);
+            return true;
+        };
+
+        if (trySpeakGreeting()) {
+            return;
+        }
+
+        if (typeof synth.addEventListener !== 'function') {
+            return;
+        }
+
+        const greetWhenVoicesReady = () => {
+            if (trySpeakGreeting()) {
+                synth.removeEventListener('voiceschanged', greetWhenVoicesReady);
+            }
+        };
+
+        synth.addEventListener('voiceschanged', greetWhenVoicesReady);
+        setTimeout(() => {
+            synth.removeEventListener('voiceschanged', greetWhenVoicesReady);
+        }, 5000);
+    };
+
+    // Give a moment for voices to initialize before greeting
+    setTimeout(greetPlayer, 500);
 }
 
 /**
