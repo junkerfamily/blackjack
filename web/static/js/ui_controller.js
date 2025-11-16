@@ -5,6 +5,10 @@ export class UIController {
         this.activePeekTimeout = null;
         this.isDealerPeekAnimating = false;
         this.isTestingPeek = false;
+        this.shuffleOverlayEl = document.getElementById('shuffle-overlay');
+        this.shuffleStatusEl = document.getElementById('shuffle-status');
+        this.lastShuffleEventId = null;
+        this.shuffleHideTimeout = null;
     }
 
     showLoading() {
@@ -377,6 +381,47 @@ export class UIController {
                 downloadBtn.style.display = 'none';
             }
         }
+    }
+
+    /**
+     * Trigger the shuffle overlay when the backend reports a new shuffle event.
+     * @param {Object|null} shuffleData
+     */
+    handleShuffleOverlay(shuffleData) {
+        if (!this.shuffleOverlayEl || !shuffleData?.id) {
+            return;
+        }
+
+        if (shuffleData.id === this.lastShuffleEventId) {
+            return;
+        }
+
+        this.lastShuffleEventId = shuffleData.id;
+
+        if (this.shuffleHideTimeout) {
+            clearTimeout(this.shuffleHideTimeout);
+        }
+
+        // Restart animation by toggling the playing class
+        this.shuffleOverlayEl.classList.add('visible');
+        this.shuffleOverlayEl.classList.remove('playing');
+        void this.shuffleOverlayEl.offsetWidth; // Force reflow
+        this.shuffleOverlayEl.classList.add('playing');
+
+        if (this.shuffleStatusEl) {
+            const label = shuffleData.reason === 'auto_threshold'
+                ? 'Rebuilding shoe…'
+                : 'Shuffling…';
+            this.shuffleStatusEl.textContent = label;
+        }
+
+        this.shuffleHideTimeout = window.setTimeout(() => {
+            if (this.shuffleOverlayEl) {
+                this.shuffleOverlayEl.classList.remove('visible');
+                this.shuffleOverlayEl.classList.remove('playing');
+            }
+            this.shuffleHideTimeout = null;
+        }, 4000);
     }
 
 

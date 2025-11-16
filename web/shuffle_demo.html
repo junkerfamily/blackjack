@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shuffle Animation Demo</title>
+    <link rel="stylesheet" href="static/css/cards.css">
+    <link rel="stylesheet" href="static/css/shuffle_demo.css">
+</head>
+<body>
+    <main class="shuffle-demo">
+        <header class="demo-header">
+            <h1>Shuffle Animation Playground</h1>
+            <p>
+                Use the controls to preview our shuffle overlay. When scaled just right,
+                this animation will sit over the dealer board inside the Blackjack table.
+            </p>
+        </header>
+
+        <section class="demo-table">
+            <div class="dealer-area-mock">
+                <div class="dealer-label">Dealer Board Area</div>
+                <div class="shuffle-overlay" id="shuffle-overlay" aria-live="polite">
+                    <div class="shuffle-stack" role="img" aria-label="Shuffling cards animation">
+                        <div class="demo-card card-one"></div>
+                        <div class="demo-card card-two"></div>
+                        <div class="demo-card card-three"></div>
+                        <div class="demo-card card-four"></div>
+                    </div>
+                    <div class="shuffle-status" id="shuffle-status">Tap play to shuffle</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="demo-controls">
+            <div class="control-row">
+                <label for="scale-slider">
+                    Animation Scale
+                    <span id="scale-value">1.0×</span>
+                </label>
+                <input type="range" id="scale-slider" min="0.6" max="1.6" step="0.05" value="1">
+            </div>
+            <div class="control-row buttons">
+                <button id="play-button" class="demo-btn">Play Shuffle</button>
+                <button id="reset-button" class="demo-btn secondary">Reset</button>
+            </div>
+            <p class="demo-note">
+                When we wire this into the Blackjack board the overlay will hover above the live dealer area,
+                sharing the same scale settings you dial in here.
+            </p>
+        </section>
+    </main>
+
+    <script src="static/js/shuffle_demo.js" type="module"></script>
+</body>
+</html>
+

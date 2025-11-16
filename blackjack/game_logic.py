@@ -59,6 +59,8 @@ class BlackjackGame:
         self.round_history: list = []
         self.current_round_audit: Optional[Dict[str, Any]] = None
         self.round_counter: int = 0
+        # Shuffle animation state for UI
+        self.last_shuffle_event: Optional[Dict[str, Any]] = None
         # Dealer peek state
         self.dealer_peeked: bool = False
         # Test mode: forced dealer hand (format: "rank1,rank2" e.g., "10,A" or "A,10")
@@ -213,6 +215,7 @@ class BlackjackGame:
             sys.stdout.flush()
             self.deck = Deck(self.num_decks)
             self.deck.shuffle()
+            self._record_shuffle_event(reason='auto_threshold')
     
     def place_bet(self, amount: int) -> Dict[str, Any]:
         """
@@ -944,6 +947,7 @@ class BlackjackGame:
             'force_dealer_hand': self.force_dealer_hand,
             'has_completed_round': len(self.round_history) > 0,
             'latest_round_id': latest_round_id,
+            'shuffle_animation': self.last_shuffle_event,
             'auto_mode': {
                 'active': self.auto_mode_active,
                 'hands_remaining': self.auto_hands_remaining,
@@ -952,6 +956,14 @@ class BlackjackGame:
                 'status': self.auto_status,
                 'log_filename': self.auto_mode_log_filename if not self.auto_mode_active and self.auto_mode_log_filename else None
             }
+        }
+
+    def _record_shuffle_event(self, reason: str):
+        """Record shuffle metadata so the frontend can trigger an overlay animation."""
+        self.last_shuffle_event = {
+            'id': str(uuid.uuid4()),
+            'timestamp': datetime.utcnow().isoformat(timespec='milliseconds') + 'Z',
+            'reason': reason
         }
     
     def set_force_dealer_hand(self, hand_string: Optional[str]) -> Dict[str, Any]:

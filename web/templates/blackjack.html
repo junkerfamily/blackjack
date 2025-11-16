@@ -220,6 +220,9 @@
             <div class="primary-column">
                 <!-- Dealer Area -->
                 <section class="dealer-area">
+                    <button type="button" class="shuffle-trigger-btn" id="shuffle-trigger-btn" title="Show shuffle overlay">
+                        Shuffle
+                    </button>
                     <div id="dealer-hand" class="card-hand"></div>
                     
                     <!-- Dealer Info Bar -->
@@ -229,6 +232,17 @@
                             <span class="hand-value-inline" id="dealer-value">Value: ?</span>
                         </div>
                         <div class="game-message" id="game-message"></div>
+                    </div>
+
+                    <!-- Shuffle Overlay -->
+                    <div class="shuffle-overlay" id="shuffle-overlay" aria-live="polite">
+                        <div class="shuffle-stack" role="img" aria-label="Shuffling cards animation">
+                            <div class="shuffle-card card-one"></div>
+                            <div class="shuffle-card card-two"></div>
+                            <div class="shuffle-card card-three"></div>
+                            <div class="shuffle-card card-four"></div>
+                        </div>
+                        <div class="shuffle-status" id="shuffle-status">Shuffling…</div>
                     </div>
                 </section>
 

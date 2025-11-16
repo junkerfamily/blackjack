@@ -745,6 +745,16 @@ class BlackjackGame {
         if (clearLogHandBtn) {
             clearLogHandBtn.addEventListener('click', () => this.clearLogHand());
         }
+
+        const shuffleTriggerBtn = document.getElementById('shuffle-trigger-btn');
+        if (shuffleTriggerBtn) {
+            shuffleTriggerBtn.addEventListener('click', () => {
+                this.ui.handleShuffleOverlay({
+                    id: `manual-${Date.now()}`,
+                    reason: 'manual'
+                });
+            });
+        }
         
         // Enable chip buttons initially
         document.querySelectorAll('.chip').forEach(chip => {
@@ -1998,6 +2008,7 @@ class BlackjackGame {
         // Update insurance UI
         this.updateInsuranceUI();
         this.ui.updateAutoStatusUI();
+        this.ui.handleShuffleOverlay(state.shuffle_animation);
         
         // Update cut card display
         this.updateCutCardDisplay();
