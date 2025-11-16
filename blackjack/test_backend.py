@@ -202,23 +202,69 @@ def test_insurance_offer_and_payout():
 
 
 def test_even_money():
-    """Even money pays immediately 1:1"""
+    """Test Even Money feature - accept and decline scenarios"""
     print("Testing even money...")
+    
+    # Test 1: Accept Even Money - pays 1:1
     game = BlackjackGame(starting_chips=1000)
     game.new_game()
-    # Player blackjack, dealer Ace up
     hand = game.player.get_current_hand()
-    hand.cards = [Card('hearts','A'), Card('clubs','K')]
     hand.bet = 100
     game.player.chips -= 100
-    game.dealer.hand = [Card('spades','9'), Card('hearts','A')]
+    
+    # Set up: Player blackjack, dealer Ace up, Even Money offered
+    hand.cards = [Card('hearts','A'), Card('clubs','K')]
+    game.dealer.hand = [Card('spades','9'), Card('hearts','A')]  # Ace is up-card (index 1)
     game.state = GameState.PLAYER_TURN
     game.even_money_offer_active = True
+    
     res = game.insurance_decision('even_money')
     assert res['success'] and res.get('game_over')
-    # Even money pays +200 -> back to 1100? start 1000-100+200=1100
+    # Even money pays bet*2 (1:1) = 200 total, but bet was already deducted
+    # Start: 1000, bet: -100, payout: +200, total: 1100
     assert game.player.chips == 1100
-    print("✓ Even money payout correct")
+    assert game.result == 'even_money'
+    print("✓ Even Money acceptance pays 1:1 correctly")
+    
+    # Test 2: Decline Even Money - dealer has blackjack (push)
+    game2 = BlackjackGame(starting_chips=1000)
+    game2.new_game()
+    hand2 = game2.player.get_current_hand()
+    hand2.bet = 100
+    game2.player.chips -= 100
+    hand2.cards = [Card('hearts','A'), Card('clubs','K')]
+    game2.dealer.hand = [Card('spades','A'), Card('hearts','A')]  # Dealer also has blackjack
+    game2.state = GameState.PLAYER_TURN
+    game2.even_money_offer_active = True
+    
+    # Decline Even Money - should reveal dealer hole card and push
+    res2 = game2.insurance_decision('decline')
+    assert res2['success'] and res2.get('game_over')
+    assert game2.result == 'push'
+    assert game2.player.chips == 900  # Bet returned (push)
+    print("✓ Even Money decline with dealer blackjack results in push")
+    
+    # Test 3: Decline Even Money - dealer doesn't have blackjack (player wins 3:2)
+    game3 = BlackjackGame(starting_chips=1000)
+    game3.new_game()
+    hand3 = game3.player.get_current_hand()
+    hand3.bet = 100
+    game3.player.chips -= 100
+    hand3.cards = [Card('hearts','A'), Card('clubs','K')]
+    game3.dealer.hand = [Card('spades','9'), Card('hearts','A')]  # Dealer doesn't have blackjack
+    game3.state = GameState.PLAYER_TURN
+    game3.even_money_offer_active = True
+    
+    # Decline Even Money - should reveal dealer hole card and player wins 3:2
+    res3 = game3.insurance_decision('decline')
+    assert res3['success'] and res3.get('game_over')
+    assert game3.result == 'blackjack'
+    # Blackjack pays 3:2 = 1.5x bet profit = 150, plus bet back = 250 total
+    # Start: 1000, bet: -100, payout: +250, total: 1150
+    assert game3.player.chips == 1150
+    print("✓ Even Money decline with dealer no blackjack results in 3:2 win")
+    
+    print("✓ All Even Money tests passed")
 
 
 def test_auto_mode_insufficient_start():

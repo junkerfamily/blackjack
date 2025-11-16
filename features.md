@@ -9,7 +9,7 @@
 - Split pairs up to 4 hands maximum
 - Split Aces receive only one card per hand (no hit/double)
 - Insurance side bet (pays 2:1 when dealer has blackjack)
-- Even Money option when player has blackjack and dealer shows Ace
+- Even Money option - When player has blackjack and dealer shows Ace, player can take Even Money (1:1 payout) to guarantee a win, or decline to risk a push but potentially win 3:2
 - 5 Card Charlie rule (automatic win with 5 cards without busting)
 - Blackjack pays 3:2
 - Dealer must hit on 16 or less, stand on 17 or more
@@ -33,7 +33,7 @@
 - Game history panel (last 5 rounds)
 - Rules panel with basic, advanced, shortcuts, and casino info pages
 - Settings panel (Config) for voice, bankroll, dealer delay, and dealer rules
-- Keyboard shortcuts (D=Deal, H=Hit, S=Stand, R=Surrender, I=Insurance, 1=$100 bet, 5=$500 bet)
+- Keyboard shortcuts (D=Deal, H=Hit, S=Stand, R=Surrender, I=Insurance/Even Money, 1=$100 bet, 5=$500 bet)
 - Responsive design for mobile and desktop
 - Loading overlays and status messages
 - Blackjack celebration animation

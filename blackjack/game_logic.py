@@ -342,12 +342,24 @@ class BlackjackGame:
         # Mark as peeked
         self.dealer_peeked = True
         
-        # Peek: reveal hole card to check for blackjack
-        self.dealer.reveal_hole_card()
+        # Peek: check for blackjack WITHOUT revealing hole card yet
+        # Temporarily check if dealer has blackjack by accessing the hole card directly
+        if len(self.dealer.hand) >= 2:
+            hole_card = self.dealer.hand[0]
+            upcard = self.dealer.hand[1]
+            # Check if it's blackjack (Ace + 10-value card)
+            is_blackjack_check = (
+                (hole_card.rank == 'A' and upcard.value == 10) or
+                (upcard.rank == 'A' and hole_card.value == 10)
+            )
+        else:
+            is_blackjack_check = False
+        
         self._record_round_event('dealer_peeked', {})
         
-        # Check if dealer has blackjack
-        if self.dealer.is_blackjack():
+        # Only reveal hole card if dealer has blackjack
+        if is_blackjack_check:
+            self.dealer.reveal_hole_card()
             # Dealer has blackjack - end round immediately
             self.state = GameState.GAME_OVER
             
@@ -379,7 +391,7 @@ class BlackjackGame:
             self._finalize_round_audit()
             return {'peeked': True, 'game_over': True, 'dealer_blackjack': True}
         
-        # Dealer doesn't have blackjack - continue game
+        # Dealer doesn't have blackjack - hole card stays hidden, continue game
         return {'peeked': True, 'game_over': False, 'dealer_blackjack': False}
     
     def deal_initial_cards(self) -> Dict[str, Any]:
@@ -420,9 +432,30 @@ class BlackjackGame:
             dealer_cards = self.deck.deal_cards(2)
             self.dealer.add_cards(dealer_cards)
         
-        # Check for player blackjack (player wins immediately only if dealer doesn't have blackjack)
-        if self.player.get_current_hand().is_blackjack():
-            # Player has blackjack - reveal dealer's hole card to check if dealer also has it
+        # Check for player blackjack and dealer Ace - offer Even Money BEFORE revealing hole card
+        current_hand = self.player.get_current_hand()
+        player_has_blackjack = current_hand.is_blackjack() if current_hand else False
+        dealer_shows_ace = len(self.dealer.hand) >= 2 and self.dealer.hand[1].rank == 'A'
+        
+        if player_has_blackjack and dealer_shows_ace:
+            # Even Money scenario: Player has blackjack, dealer shows Ace
+            # Offer Even Money BEFORE revealing dealer's hole card
+            self.even_money_offer_active = True
+            self.state = GameState.PLAYER_TURN  # Wait for Even Money decision
+            self._update_audit({'even_money_offered': True})
+            self._record_round_event('even_money_offered', {
+                'bet_amount': current_hand.bet if current_hand else 0
+            })
+            self._capture_initial_hands()
+            self._record_round_event('initial_deal', {
+                'player_cards': self.current_round_audit.get('player_initial_cards') if self.current_round_audit else [],
+                'dealer_cards': self.current_round_audit.get('dealer_initial_cards') if self.current_round_audit else []
+            })
+            return {'success': True, 'message': 'Cards dealt - Even Money offered', 'even_money_offered': True}
+        
+        elif player_has_blackjack:
+            # Player has blackjack, dealer doesn't show Ace - resolve immediately
+            # Reveal dealer's hole card to check if dealer also has it
             self.dealer.reveal_hole_card()
             if self.dealer.is_blackjack():
                 # Both have blackjack - push
@@ -438,30 +471,21 @@ class BlackjackGame:
             # Normal play continues - dealer's hole card remains hidden
             self.state = GameState.PLAYER_TURN
             
-            # INSURANCE/OFFERS: If dealer up-card is Ace, offer insurance/even money per rules
-            if len(self.dealer.hand) >= 2 and self.dealer.hand[1].rank == 'A':
-                current_hand = self.player.get_current_hand()
-                if current_hand and current_hand.is_blackjack():
-                    # Even money (authentic rule) – but this branch won't occur because we handled blackjack above
-                    self.even_money_offer_active = True
-                    self._update_audit({'even_money_offered': True})
-                    self._record_round_event('even_money_offered', {
-                        'bet_amount': current_hand.bet if current_hand else 0
-                    })
-                else:
-                    # Insurance: 50% of bet (rounded down)
-                    self.insurance_offer_active = True
-                    self.insurance_for_hand_index = self.player.current_hand_index
-                    bet = current_hand.bet if current_hand else 0
-                    self.insurance_amount = int(bet * 0.5)
-                    self._update_audit({
-                        'insurance_offered': True,
-                        'insurance_amount': self.insurance_amount
-                    })
-                    self._record_round_event('insurance_offered', {
-                        'insurance_amount': self.insurance_amount,
-                        'hand_index': self.player.current_hand_index
-                    })
+            # INSURANCE/OFFERS: If dealer up-card is Ace, offer insurance
+            if dealer_shows_ace:
+                # Insurance: 50% of bet (rounded down)
+                self.insurance_offer_active = True
+                self.insurance_for_hand_index = self.player.current_hand_index
+                bet = current_hand.bet if current_hand else 0
+                self.insurance_amount = int(bet * 0.5)
+                self._update_audit({
+                    'insurance_offered': True,
+                    'insurance_amount': self.insurance_amount
+                })
+                self._record_round_event('insurance_offered', {
+                    'insurance_amount': self.insurance_amount,
+                    'hand_index': self.player.current_hand_index
+                })
             # PEEK: If dealer shows 10-value (no insurance), peek immediately
             elif self._should_dealer_peek():
                 # Dealer shows 10-value - peek immediately to check for blackjack
@@ -1037,10 +1061,27 @@ class BlackjackGame:
                 self._finalize_round_audit()
                 return {'success': True, 'message': 'Even money paid', 'game_over': True}
             elif decision == 'decline':
+                # Player declined Even Money - now reveal dealer's hole card and resolve
                 self.even_money_offer_active = False
                 self._record_round_event('even_money_declined', {})
                 self._update_audit({'even_money_taken': False})
-                return {'success': True, 'message': 'Even money declined'}
+                
+                # Reveal dealer's hole card to check if dealer also has blackjack
+                self.dealer.reveal_hole_card()
+                if self.dealer.is_blackjack():
+                    # Both have blackjack - push
+                    self.state = GameState.GAME_OVER
+                    self.result = "push"
+                    self.player.push()
+                    self._finalize_round_audit()
+                    return {'success': True, 'message': 'Even money declined - Push (both blackjack)', 'game_over': True}
+                else:
+                    # Player blackjack, dealer doesn't - player wins 3:2
+                    self.state = GameState.GAME_OVER
+                    self.result = "blackjack"
+                    self.player.win(is_blackjack=True)
+                    self._finalize_round_audit()
+                    return {'success': True, 'message': 'Even money declined - Blackjack wins 3:2', 'game_over': True}
             else:
                 return {'success': False, 'message': 'Invalid decision'}
         
