@@ -52,6 +52,14 @@ class BlackjackGame:
         self.auto_hands_remaining: int = 0
         self.auto_default_bet: int = 0
         self.auto_insurance_mode: Optional[str] = None  # 'always' | 'never'
+        self.auto_strategy: str = 'basic'  # 'basic' | 'conservative' | 'aggressive'
+        self.auto_betting_strategy: str = 'fixed'  # 'fixed' | 'progressive' | 'percentage'
+        self.auto_bet_percentage: Optional[int] = None  # Percentage for percentage betting (1-100)
+        self.auto_double_down_pref: str = 'recommended'  # 'always' | 'never' | 'recommended'
+        self.auto_split_pref: str = 'recommended'  # 'always' | 'never' | 'recommended'
+        self.auto_surrender_pref: str = 'recommended'  # 'always' | 'never' | 'recommended'
+        self.auto_progressive_bet: int = 0  # Current bet for progressive strategy
+        self.auto_last_result: Optional[str] = None  # Track last round result for progressive betting
         self.auto_status: Optional[str] = None
         self.auto_mode_log_file: Optional[Any] = None  # File handle for auto mode logging
         self.auto_mode_log_filename: Optional[str] = None  # Log filename for download
@@ -1165,10 +1173,12 @@ class BlackjackGame:
             self._auto_mode_log_error = error_msg
             return False
     
-    def _log_auto_event(self, message: str):
+    def _log_auto_event(self, message: str, spacer_before: bool = False):
         """Write an event to the auto mode log file."""
         if self.auto_mode_log_file:
             try:
+                if spacer_before:
+                    self.auto_mode_log_file.write("\n")
                 timestamp = datetime.now().strftime('%H:%M:%S.%f')[:-3]  # Include milliseconds
                 self.auto_mode_log_file.write(f"[{timestamp}] {message}\n")
                 self.auto_mode_log_file.flush()
@@ -1189,6 +1199,10 @@ class BlackjackGame:
         """Log the result of a completed round."""
         if not self.auto_mode_log_file:
             return
+        
+        summary_divider = "-" * 70
+        self._log_auto_event(summary_divider, spacer_before=True)
+        self._log_auto_event("Round Summary")
         
         # Log dealer's final hand
         dealer_cards = [str(card) for card in self.dealer.hand]
@@ -1220,6 +1234,20 @@ class BlackjackGame:
         
         # Log bankroll after round
         self._log_auto_event(f"Bankroll after round: ${self.player.chips}")
+        self._log_auto_event(summary_divider)
+
+    def _log_round_header(self, hand_number: int):
+        """Create a visually distinct header whenever a new auto-mode hand begins."""
+        if not self.auto_mode_log_file:
+            return
+        header_divider = "=" * 70
+        header_text = (
+            f"HAND {hand_number:03d} | Hands Remaining: {self.auto_hands_remaining} | "
+            f"Bankroll: ${self.player.chips}"
+        )
+        self._log_auto_event(header_divider, spacer_before=True)
+        self._log_auto_event(header_text)
+        self._log_auto_event(header_divider)
 
     def log_hand(self) -> Dict[str, Any]:
         """
@@ -1375,7 +1403,18 @@ class BlackjackGame:
             traceback.print_exc()
             return {'success': False, 'message': error_msg}
 
-    def start_auto_mode(self, default_bet: int, hands: int, insurance_mode: str) -> Dict[str, Any]:
+    def start_auto_mode(
+        self,
+        default_bet: int,
+        hands: int,
+        insurance_mode: str,
+        strategy: str = 'basic',
+        betting_strategy: str = 'fixed',
+        bet_percentage: Optional[int] = None,
+        double_down_pref: str = 'recommended',
+        split_pref: str = 'recommended',
+        surrender_pref: str = 'recommended'
+    ) -> Dict[str, Any]:
         if self.auto_mode_active:
             return {'success': False, 'message': 'Auto mode already running'}
         if default_bet <= 0:
@@ -1384,8 +1423,27 @@ class BlackjackGame:
             return {'success': False, 'message': 'Hands must be greater than 0'}
         if insurance_mode not in ('always', 'never'):
             return {'success': False, 'message': 'Invalid insurance preference'}
-        if self.player.chips < default_bet:
+        if strategy not in ('basic', 'conservative', 'aggressive'):
+            strategy = 'basic'
+        if betting_strategy not in ('fixed', 'progressive', 'percentage'):
+            betting_strategy = 'fixed'
+        if betting_strategy == 'percentage' and (bet_percentage is None or bet_percentage <= 0 or bet_percentage > 100):
+            return {'success': False, 'message': 'Valid bet percentage (1-100) required for percentage betting strategy'}
+        if double_down_pref not in ('always', 'never', 'recommended'):
+            double_down_pref = 'recommended'
+        if split_pref not in ('always', 'never', 'recommended'):
+            split_pref = 'recommended'
+        if surrender_pref not in ('always', 'never', 'recommended'):
+            surrender_pref = 'recommended'
+        
+        # Check bankroll based on betting strategy
+        if betting_strategy == 'percentage':
+            min_bet = max(1, int(self.player.chips * bet_percentage / 100))
+            if self.player.chips < min_bet:
+                return {'success': False, 'message': 'Insufficient bankroll for auto mode'}
+        elif self.player.chips < default_bet:
             return {'success': False, 'message': 'Insufficient bankroll for auto mode'}
+        
         if self.state not in (GameState.BETTING, GameState.GAME_OVER):
             return {'success': False, 'message': 'Finish current round before starting auto mode'}
         if self.state == GameState.GAME_OVER:
@@ -1400,9 +1458,22 @@ class BlackjackGame:
         self.auto_hands_remaining = hands
         self.auto_default_bet = default_bet
         self.auto_insurance_mode = insurance_mode
+        self.auto_strategy = strategy
+        self.auto_betting_strategy = betting_strategy
+        self.auto_bet_percentage = bet_percentage
+        self.auto_double_down_pref = double_down_pref
+        self.auto_split_pref = split_pref
+        self.auto_surrender_pref = surrender_pref
+        self.auto_progressive_bet = default_bet
+        self.auto_last_result = None
         self.auto_status = f'Auto mode running ({hands} hands remaining)'
         
-        self._log_auto_event(f"Auto Mode Started - Default Bet: ${default_bet}, Hands: {hands}, Insurance: {insurance_mode}")
+        config_str = f"Default Bet: ${default_bet}, Hands: {hands}, Insurance: {insurance_mode}"
+        config_str += f", Strategy: {strategy}, Betting: {betting_strategy}"
+        if betting_strategy == 'percentage':
+            config_str += f" ({bet_percentage}%)"
+        config_str += f", Double Down: {double_down_pref}, Split: {split_pref}, Surrender: {surrender_pref}"
+        self._log_auto_event(f"Auto Mode Started - {config_str}")
         self._log_auto_event(f"Starting Bankroll: ${self.player.chips}")
         return {'success': True, 'message': 'Auto mode started'}
 
@@ -1422,17 +1493,33 @@ class BlackjackGame:
         self.auto_hands_remaining = 0
         self.auto_default_bet = 0
         self.auto_insurance_mode = None
+        self.auto_strategy = 'basic'
+        self.auto_betting_strategy = 'fixed'
+        self.auto_bet_percentage = None
+        self.auto_double_down_pref = 'recommended'
+        self.auto_split_pref = 'recommended'
+        self.auto_surrender_pref = 'recommended'
+        self.auto_progressive_bet = 0
+        self.auto_last_result = None
         self.auto_status = status
 
     def is_auto_mode_active(self) -> bool:
         return self.auto_mode_active and self.auto_hands_remaining > 0
 
     def _get_auto_play_decision(self):
-        """Determine whether to hit or stand based on dealer up card.
+        """Determine whether to hit or stand based on dealer up card and selected strategy.
         
-        Strategy:
-        - Dealer shows 2-6: stand (don't hit)
-        - Dealer shows 7, 8, 9, 10, J, Q, K, A: hit until player > 16
+        Basic Strategy:
+        - Dealer shows 2-6: stand
+        - Dealer shows 7-A: hit until >16
+        
+        Conservative Strategy:
+        - Dealer shows 2-6: stand at 13+
+        - Dealer shows 7-A: stand at 17+
+        
+        Aggressive Strategy:
+        - Dealer shows 2-6: hit until 18
+        - Dealer shows 7-A: hit until 17
         """
         current_hand = self.player.get_current_hand()
         if not current_hand or current_hand.is_bust():
@@ -1445,43 +1532,179 @@ class BlackjackGame:
             return 'stand'
         
         dealer_rank = dealer_up_card.rank
+        strategy = self.auto_strategy
         
-        # Dealer shows 2-6: stand (don't hit)
+        # Dealer shows 2-6
         if dealer_rank in ['2', '3', '4', '5', '6']:
-            return 'stand'
-        
-        # Dealer shows 7, 8, 9, 10, J, Q, K, A: hit until > 16
-        if dealer_rank in ['7', '8', '9', '10', 'J', 'Q', 'K', 'A']:
-            if player_value > 16:
+            if strategy == 'basic':
                 return 'stand'
-            else:
-                return 'hit'
+            elif strategy == 'conservative':
+                return 'stand' if player_value >= 13 else 'hit'
+            elif strategy == 'aggressive':
+                return 'stand' if player_value >= 18 else 'hit'
+        
+        # Dealer shows 7, 8, 9, 10, J, Q, K, A
+        if dealer_rank in ['7', '8', '9', '10', 'J', 'Q', 'K', 'A']:
+            if strategy == 'basic':
+                return 'stand' if player_value > 16 else 'hit'
+            elif strategy == 'conservative':
+                return 'stand' if player_value >= 17 else 'hit'
+            elif strategy == 'aggressive':
+                return 'stand' if player_value >= 17 else 'hit'
         
         # Default to stand
         return 'stand'
+
+    def _should_double_down(self) -> bool:
+        """Determine if player should double down based on preference and basic strategy."""
+        pref = self.auto_double_down_pref
+        if pref == 'never':
+            return False
+        if pref == 'always':
+            current_hand = self.player.get_current_hand()
+            return current_hand and current_hand.can_double_down() and self.player.chips >= current_hand.bet
+        
+        # 'recommended' - use basic strategy
+        current_hand = self.player.get_current_hand()
+        if not current_hand or not current_hand.can_double_down() or self.player.chips < current_hand.bet:
+            return False
+        
+        player_value = current_hand.get_value()
+        dealer_up_card = self.dealer.hand[0] if self.dealer.hand else None
+        if not dealer_up_card:
+            return False
+        
+        dealer_rank = dealer_up_card.rank
+        
+        # Basic strategy: Double on 9-11 vs dealer 2-6
+        if player_value in (9, 10, 11) and dealer_rank in ('2', '3', '4', '5', '6'):
+            return True
+        
+        # Double on soft 13-18 vs dealer 4-6 (simplified - check if hand is soft)
+        if len(current_hand.cards) == 2:
+            has_ace = any(card.rank == 'A' for card in current_hand.cards)
+            if has_ace and player_value in (13, 14, 15, 16, 17, 18) and dealer_rank in ('4', '5', '6'):
+                return True
+        
+        return False
+
+    def _should_split(self) -> bool:
+        """Determine if player should split based on preference and basic strategy."""
+        pref = self.auto_split_pref
+        if pref == 'never':
+            return False
+        if pref == 'always':
+            current_hand = self.player.get_current_hand()
+            return current_hand and current_hand.can_split() and len(self.player.hands) < 4 and self.player.chips >= current_hand.bet
+        
+        # 'recommended' - use basic strategy
+        current_hand = self.player.get_current_hand()
+        if not current_hand or not current_hand.can_split() or len(self.player.hands) >= 4 or self.player.chips < current_hand.bet:
+            return False
+        
+        if len(current_hand.cards) != 2:
+            return False
+        
+        card1_rank = current_hand.cards[0].rank
+        card2_rank = current_hand.cards[1].rank
+        dealer_up_card = self.dealer.hand[0] if self.dealer.hand else None
+        
+        if not dealer_up_card:
+            return False
+        
+        dealer_rank = dealer_up_card.rank
+        
+        # Always split Aces and 8s
+        if card1_rank == card2_rank and card1_rank in ('A', '8'):
+            return True
+        
+        # Split 2s, 3s, 6s, 7s, 9s vs dealer 2-6
+        if card1_rank == card2_rank and card1_rank in ('2', '3', '6', '7', '9') and dealer_rank in ('2', '3', '4', '5', '6'):
+            return True
+        
+        # Split 4s vs dealer 5-6
+        if card1_rank == card2_rank and card1_rank == '4' and dealer_rank in ('5', '6'):
+            return True
+        
+        return False
+
+    def _should_surrender(self) -> bool:
+        """Determine if player should surrender based on preference and basic strategy."""
+        pref = self.auto_surrender_pref
+        if pref == 'never':
+            return False
+        if pref == 'always':
+            current_hand = self.player.get_current_hand()
+            if not current_hand or len(current_hand.cards) != 2 or current_hand.is_blackjack():
+                return False
+            # Surrender is only available on first action (exactly 2 cards, no actions taken)
+            return True
+        
+        # 'recommended' - use basic strategy
+        current_hand = self.player.get_current_hand()
+        if not current_hand or len(current_hand.cards) != 2 or current_hand.is_blackjack():
+            return False
+        
+        player_value = current_hand.get_value()
+        dealer_up_card = self.dealer.hand[0] if self.dealer.hand else None
+        if not dealer_up_card:
+            return False
+        
+        dealer_rank = dealer_up_card.rank
+        
+        # Basic strategy: Surrender hard 15-16 vs dealer 10, hard 16 vs dealer 9
+        if dealer_rank == '10' and player_value in (15, 16):
+            return True
+        if dealer_rank == '9' and player_value == 16:
+            return True
+        
+        return False
 
     def run_auto_cycle(self):
         """Execute auto-mode rounds until finished or interrupted."""
         hand_number = 0
         while self.is_auto_mode_active():
             hand_number += 1
-            self._log_auto_event(f"--- Round {hand_number} (Hands Remaining: {self.auto_hands_remaining}) ---")
+            self._log_round_header(hand_number)
             
             # Ensure we're in betting state for new round
             if self.state != GameState.BETTING:
                 self.new_game(preserve_auto=True)
+            
+            # Calculate bet amount based on betting strategy
+            if self.auto_betting_strategy == 'fixed':
+                bet_amount = self.auto_default_bet
+            elif self.auto_betting_strategy == 'progressive':
+                # Progressive: double after loss, reset to default after win/push
+                if self.auto_last_result == 'loss':
+                    # Double the previous bet (or default if first round after loss)
+                    prev_bet = self.auto_progressive_bet if self.auto_progressive_bet > 0 else self.auto_default_bet
+                    bet_amount = min(prev_bet * 2, self.max_bet)
+                    bet_amount = max(bet_amount, self.auto_default_bet)  # Don't go below default
+                else:
+                    # Reset to default after win/push/blackjack
+                    bet_amount = self.auto_default_bet
+                self.auto_progressive_bet = bet_amount
+            elif self.auto_betting_strategy == 'percentage':
+                # Percentage: bet X% of current bankroll
+                bet_amount = max(1, int(self.player.chips * self.auto_bet_percentage / 100))
+                bet_amount = min(bet_amount, self.max_bet)  # Respect max bet limit
+            else:
+                bet_amount = self.auto_default_bet
+            
             # Check bankroll
-            if self.player.chips < self.auto_default_bet:
-                self._log_auto_event(f"Bankroll check failed: ${self.player.chips} < ${self.auto_default_bet}")
+            if self.player.chips < bet_amount:
+                self._log_auto_event(f"Bankroll check failed: ${self.player.chips} < ${bet_amount}")
                 self.stop_auto_mode('Auto mode stopped: insufficient bankroll')
                 break
+            
             # Place bet
-            bet_result = self.place_bet(self.auto_default_bet)
+            bet_result = self.place_bet(bet_amount)
             if not bet_result.get('success'):
                 self._log_auto_event(f"Bet placement failed: {bet_result.get('message')}")
                 self.stop_auto_mode(f"Auto mode stopped: {bet_result.get('message')}")
                 break
-            self._log_auto_event(f"Bet placed: ${self.auto_default_bet} (Bankroll: ${self.player.chips})")
+            self._log_auto_event(f"Bet placed: ${bet_amount} (Bankroll: ${self.player.chips})")
             # Deal cards
             deal_result = self.deal_initial_cards()
             if not deal_result.get('success'):
@@ -1530,19 +1753,77 @@ class BlackjackGame:
                         self.auto_status = f'Auto mode running ({self.auto_hands_remaining} hands remaining)'
                         self.new_game(preserve_auto=True)
                     continue
-            # If round still in player turn, apply hit/stand strategy
+            # If round still in player turn, check for actions and apply hit/stand strategy
             if self.state == GameState.PLAYER_TURN:
+                # Process all hands (in case of splits)
                 while self.state == GameState.PLAYER_TURN:
-                    decision = self._get_auto_play_decision()
                     current_hand = self.player.get_current_hand()
-                    player_value = current_hand.get_value() if current_hand else 0
+                    if not current_hand:
+                        break
+                    
+                    player_value = current_hand.get_value()
+                    
+                    # Check for surrender (only on first action, exactly 2 cards)
+                    if self._should_surrender():
+                        self._log_auto_event(f"Player value {player_value} - Auto surrendering")
+                        surrender_result = self.surrender()
+                        if not surrender_result.get('success', False):
+                            self._log_auto_event(f"Surrender failed: {surrender_result.get('message')}")
+                            self.stop_auto_mode(f"Auto mode stopped: {surrender_result.get('message')}")
+                            break
+                        # Surrender moves to next hand or ends round
+                        continue
+                    
+                    # Check for split
+                    if self._should_split():
+                        self._log_auto_event(f"Player cards: {', '.join(str(c) for c in current_hand.cards)} - Auto splitting")
+                        split_result = self.split()
+                        if not split_result.get('success', False):
+                            self._log_auto_event(f"Split failed: {split_result.get('message')}")
+                            # Continue with play if split fails
+                        else:
+                            # Split successful, continue to play each hand
+                            continue
+                    
+                    # If this is a split aces hand, no further actions allowed - stand automatically
+                    if hasattr(current_hand, 'is_from_split_aces') and current_hand.is_from_split_aces:
+                        self._log_auto_event("Split aces hand - auto standing (hits not allowed)")
+                        stand_result = self.stand()
+                        if not stand_result.get('success', False):
+                            self._log_auto_event(f"Stand failed: {stand_result.get('message')}")
+                            self.stop_auto_mode(f"Auto mode stopped: {stand_result.get('message')}")
+                            break
+                        continue
+
+                    # Check for double down
+                    if self._should_double_down():
+                        self._log_auto_event(f"Player value {player_value} - Auto doubling down")
+                        double_result = self.double_down()
+                        if not double_result.get('success', False):
+                            self._log_auto_event(f"Double down failed: {double_result.get('message')}")
+                            # Continue with hit/stand if double down fails
+                        else:
+                            # Double down automatically hits once and stands
+                            continue
+                    
+                    # Hit/stand decision
+                    decision = self._get_auto_play_decision()
                     
                     if decision == 'hit':
                         self._log_auto_event(f"Player value {player_value} - Auto hitting")
                         hit_result = self.hit()
                         if not hit_result.get('success', False):
-                            self._log_auto_event(f"Hit failed: {hit_result.get('message')}")
-                            self.stop_auto_mode(f"Auto mode stopped: {hit_result.get('message')}")
+                            error_msg = hit_result.get('message', '')
+                            if error_msg and 'split aces' in error_msg.lower():
+                                self._log_auto_event("Hit blocked on split aces - auto standing instead")
+                                stand_result = self.stand()
+                                if not stand_result.get('success', False):
+                                    self._log_auto_event(f"Stand failed after split-ace hit block: {stand_result.get('message')}")
+                                    self.stop_auto_mode(f"Auto mode stopped: {stand_result.get('message')}")
+                                    break
+                                continue
+                            self._log_auto_event(f"Hit failed: {error_msg}")
+                            self.stop_auto_mode(f"Auto mode stopped: {error_msg}")
                             break
                         # Check if busted after hit
                         if hit_result.get('bust', False):
@@ -1567,6 +1848,12 @@ class BlackjackGame:
             
             # Log round result
             self._log_round_result()
+            
+            # Track result for progressive betting
+            if self.result:
+                self.auto_last_result = self.result  # 'win', 'loss', 'push', 'blackjack'
+            else:
+                self.auto_last_result = None
             
             self.auto_hands_remaining -= 1
             if self.auto_hands_remaining <= 0:
