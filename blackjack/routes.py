@@ -317,14 +317,51 @@ def auto_mode_start():
         default_bet = data.get('default_bet')
         hands = data.get('hands')
         insurance_mode = data.get('insurance_mode', 'never')
+        strategy = data.get('strategy', 'basic')
+        betting_strategy = data.get('betting_strategy', 'fixed')
+        bet_percentage = data.get('bet_percentage')
+        double_down_pref = data.get('double_down_pref', 'recommended')
+        split_pref = data.get('split_pref', 'recommended')
+        surrender_pref = data.get('surrender_pref', 'recommended')
 
         if not game_id:
             return jsonify({'success': False, 'error': 'Game ID required'}), 400
         if default_bet is None or hands is None:
             return jsonify({'success': False, 'error': 'Default bet and hands required'}), 400
 
+        # Validate strategy
+        if strategy not in ('basic', 'conservative', 'aggressive'):
+            strategy = 'basic'
+        
+        # Validate betting strategy
+        if betting_strategy not in ('fixed', 'progressive', 'percentage'):
+            betting_strategy = 'fixed'
+        
+        # Validate bet percentage if using percentage strategy
+        if betting_strategy == 'percentage':
+            if bet_percentage is None or bet_percentage <= 0 or bet_percentage > 100:
+                return jsonify({'success': False, 'error': 'Valid bet percentage (1-100) required for percentage betting strategy'}), 400
+        
+        # Validate action preferences
+        if double_down_pref not in ('always', 'never', 'recommended'):
+            double_down_pref = 'recommended'
+        if split_pref not in ('always', 'never', 'recommended'):
+            split_pref = 'recommended'
+        if surrender_pref not in ('always', 'never', 'recommended'):
+            surrender_pref = 'recommended'
+
         game = get_game(game_id)
-        result = game.start_auto_mode(int(default_bet), int(hands), insurance_mode)
+        result = game.start_auto_mode(
+            int(default_bet),
+            int(hands),
+            insurance_mode,
+            strategy=strategy,
+            betting_strategy=betting_strategy,
+            bet_percentage=bet_percentage,
+            double_down_pref=double_down_pref,
+            split_pref=split_pref,
+            surrender_pref=surrender_pref
+        )
         if result.get('success'):
             game.run_auto_cycle()
         status = 200 if result.get('success') else 400
@@ -403,6 +440,46 @@ def download_auto_mode_log():
             as_attachment=True,
             download_name=log_filename
         )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@blackjack_bp.route('/auto_mode/log_contents', methods=['GET'])
+def view_auto_mode_log():
+    """Retrieve the auto mode log file content for viewing"""
+    try:
+        game_id = request.args.get('game_id')
+        log_filename = request.args.get('filename')
+
+        if not game_id:
+            return jsonify({'success': False, 'error': 'Game ID required'}), 400
+        if not log_filename:
+            return jsonify({'success': False, 'error': 'Log filename required'}), 400
+
+        game = get_game(game_id)
+
+        if game.auto_mode_log_filename != log_filename:
+            return jsonify({'success': False, 'error': 'Invalid log filename'}), 403
+
+        current_file = os.path.abspath(__file__)
+        blackjack_dir = os.path.dirname(current_file)
+        project_root = os.path.dirname(blackjack_dir)
+
+        if not os.path.exists(project_root):
+            project_root = os.getcwd()
+
+        log_dir = os.path.join(project_root, 'AutoMode')
+        log_path = os.path.join(log_dir, log_filename)
+
+        if not os.path.exists(log_path):
+            return jsonify({'success': False, 'error': 'Log file not found'}), 404
+
+        with open(log_path, 'r', encoding='utf-8') as log_file:
+            content = log_file.read()
+
+        return jsonify({'success': True, 'content': content})
     except Exception as e:
         import traceback
         traceback.print_exc()

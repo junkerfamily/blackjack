@@ -1785,6 +1785,32 @@ button:disabled {
     color: var(--text-light);
 }
 
+.auto-mode-select {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 8px;
+    padding: 8px;
+    color: var(--text-light);
+    font-family: inherit;
+    font-size: inherit;
+    cursor: pointer;
+}
+
+.auto-mode-select:hover {
+    border-color: rgba(255, 215, 0, 0.5);
+}
+
+.auto-mode-select:focus {
+    outline: none;
+    border-color: var(--gold);
+    box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.2);
+}
+
+.auto-mode-select option {
+    background: rgba(0, 0, 0, 0.9);
+    color: var(--text-light);
+}
+
 .auto-mode-radio-group {
     display: flex;
     gap: 16px;
@@ -1822,6 +1848,82 @@ button:disabled {
 
 .auto-status #auto-status-text {
     flex: 1;
+}
+
+.auto-log-viewer-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.92);
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    padding: 32px 24px;
+    z-index: 3000;
+}
+
+.auto-log-viewer-panel {
+    background: rgba(8, 16, 27, 0.95);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    width: 100%;
+    max-width: 1200px;
+    height: 100%;
+    max-height: calc(100% - 64px);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
+    overflow: hidden;
+}
+
+.auto-log-viewer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.auto-log-viewer-title {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: var(--gold);
+    letter-spacing: 0.1em;
+}
+
+.btn-log-viewer-close {
+    padding: 6px 14px;
+    font-size: 0.85em;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: var(--text-light);
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.btn-log-viewer-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+}
+
+.auto-log-viewer-content {
+    flex: 1;
+    border: none;
+    background: rgba(4, 8, 15, 0.9);
+    color: var(--text-light);
+    font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+    font-size: 0.9em;
+    padding: 16px 20px;
+    outline: none;
+    resize: none;
+    white-space: pre;
+    overflow: auto;
+    line-height: 1.25;
+}
+
+.auto-status .btn-download-log + .btn-download-log {
+    margin-left: 6px;
 }
 
 .btn-download-log {

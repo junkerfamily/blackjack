@@ -1907,7 +1907,19 @@ class BlackjackGame {
             }
         } else if (result === 'push') {
             this.log('ROUND RESULT: PUSH (Tie)', 'action');
-            this.ui.showMessage('Push - It\'s a tie! $0', 'info');
+            const insuranceOutcome = this.gameState?.insurance_outcome;
+            if (insuranceOutcome && insuranceOutcome.amount > 0) {
+                const formattedInsurance = insuranceOutcome.amount.toLocaleString();
+                if (insuranceOutcome.paid === true) {
+                    // Dealer had blackjack and insurance paid out even though final result pushed
+                    this.ui.showMessageWithColors('Push - It\'s a tie! $0, ', '#ffd700', `Ins Paid: $${formattedInsurance}`, '#28a745');
+                } else {
+                    // Dealer did not have blackjack, insurance was lost
+                    this.ui.showMessageWithColors('Push - It\'s a tie! $0, ', '#ffd700', `Ins Lost: $${formattedInsurance}`, '#dc3545');
+                }
+            } else {
+                this.ui.showMessage('Push - It\'s a tie! $0', 'info');
+            }
         } else {
             this.log(`ROUND ENDED: Unknown result "${result}"`, 'warn');
             this.ui.showMessage('Game Over', 'info');
@@ -2345,6 +2357,27 @@ class BlackjackGame {
             window.location.href = url;
         } else {
             this.log('Unable to build auto mode log URL', 'error');
+        }
+    }
+
+    async openAutoModeLogViewer(logFilename) {
+        if (!this.gameState?.game_id || !logFilename) {
+            this.ui.showMessage('Log viewer unavailable: missing game ID or filename', 'error');
+            return;
+        }
+
+        try {
+            this.ui.showLoading();
+            const result = await this.apiClient.fetchAutoModeLogContent(this.gameState.game_id, logFilename);
+            if (result?.success) {
+                this.ui.showAutoModeLogViewer(result.content || '');
+            } else {
+                this.ui.showMessage(result?.error || result?.message || 'Failed to load auto mode log', 'error');
+            }
+        } catch (error) {
+            this.ui.showMessage(error?.message || 'Failed to load auto mode log', 'error');
+        } finally {
+            this.ui.hideLoading();
         }
     }
 

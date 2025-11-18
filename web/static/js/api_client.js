@@ -134,6 +134,19 @@ export class ApiClient {
         return `/api/auto_mode/download_log${query}`;
     }
 
+    fetchAutoModeLogContent(gameId, filename) {
+        if (!gameId || !filename) {
+            return Promise.reject(new Error('Game ID and log filename required'));
+        }
+
+        const query = buildQueryString({
+            game_id: gameId,
+            filename
+        });
+
+        return this.request(`/api/auto_mode/log_contents${query}`, 'GET');
+    }
+
     getLogHandUrl(gameId) {
         if (!gameId) {
             return null;

@@ -9,6 +9,12 @@ export class UIController {
         this.shuffleStatusEl = document.getElementById('shuffle-status');
         this.lastShuffleEventId = null;
         this.shuffleHideTimeout = null;
+        this.autoLogViewerOverlayEl = document.getElementById('auto-log-viewer-overlay');
+        this.autoLogViewerCloseBtn = document.getElementById('auto-log-viewer-close-btn');
+        this.autoLogViewerContentEl = document.getElementById('auto-log-viewer-content');
+        if (this.autoLogViewerCloseBtn) {
+            this.autoLogViewerCloseBtn.addEventListener('click', () => this.hideAutoModeLogViewer());
+        }
     }
 
     showLoading() {
@@ -356,6 +362,7 @@ export class UIController {
         const statusEl = document.getElementById('auto-status');
         const statusTextEl = document.getElementById('auto-status-text');
         const downloadBtn = document.getElementById('auto-download-log-btn');
+        const viewBtn = document.getElementById('auto-view-log-btn');
 
         if (!statusEl) return;
 
@@ -372,6 +379,12 @@ export class UIController {
             } else if (downloadBtn) {
                 downloadBtn.style.display = 'none';
             }
+            if (viewBtn && autoMode.log_filename) {
+                viewBtn.style.display = 'inline-block';
+                viewBtn.onclick = () => game.openAutoModeLogViewer(autoMode.log_filename);
+            } else if (viewBtn) {
+                viewBtn.style.display = 'none';
+            }
         } else {
             statusEl.style.display = 'none';
             if (statusTextEl) {
@@ -380,7 +393,27 @@ export class UIController {
             if (downloadBtn) {
                 downloadBtn.style.display = 'none';
             }
+            if (viewBtn) {
+                viewBtn.style.display = 'none';
+            }
         }
+    }
+
+    showAutoModeLogViewer(content = '') {
+        if (!this.autoLogViewerOverlayEl) return;
+        if (this.autoLogViewerContentEl) {
+            this.autoLogViewerContentEl.value = content || '';
+            this.autoLogViewerContentEl.scrollTop = 0;
+            setTimeout(() => {
+                this.autoLogViewerContentEl.focus();
+            }, 0);
+        }
+        this.autoLogViewerOverlayEl.style.display = 'flex';
+    }
+
+    hideAutoModeLogViewer() {
+        if (!this.autoLogViewerOverlayEl) return;
+        this.autoLogViewerOverlayEl.style.display = 'none';
     }
 
     /**

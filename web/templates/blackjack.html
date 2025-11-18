@@ -290,11 +290,45 @@
                             <input type="number" id="auto-bet-input" min="1" step="1" value="100">
                             <label class="auto-mode-label" for="auto-hands-input">Hands to Play</label>
                             <input type="number" id="auto-hands-input" min="1" step="1" value="5">
+                            <label class="auto-mode-label" for="auto-strategy-select">Strategy</label>
+                            <select id="auto-strategy-select" class="auto-mode-select">
+                                <option value="basic">Basic Strategy</option>
+                                <option value="conservative">Conservative</option>
+                                <option value="aggressive">Aggressive</option>
+                            </select>
+                            <label class="auto-mode-label" for="auto-betting-strategy-select">Betting Strategy</label>
+                            <select id="auto-betting-strategy-select" class="auto-mode-select">
+                                <option value="fixed">Fixed Bet</option>
+                                <option value="progressive">Progressive (Martingale)</option>
+                                <option value="percentage">Percentage of Bankroll</option>
+                            </select>
+                            <div id="auto-percentage-container" style="display: none;">
+                                <label class="auto-mode-label" for="auto-percentage-input">Bet Percentage (%)</label>
+                                <input type="number" id="auto-percentage-input" min="1" max="100" step="1" value="5">
+                            </div>
                             <div class="auto-mode-label">Insurance Preference</div>
                             <div class="auto-mode-radio-group">
                                 <label><input type="radio" name="auto-insurance" value="always"> Always take</label>
                                 <label><input type="radio" name="auto-insurance" value="never" checked> Never take</label>
                             </div>
+                            <label class="auto-mode-label" for="auto-double-down-select">Double Down</label>
+                            <select id="auto-double-down-select" class="auto-mode-select">
+                                <option value="always">Always</option>
+                                <option value="never">Never</option>
+                                <option value="recommended" selected>When Recommended</option>
+                            </select>
+                            <label class="auto-mode-label" for="auto-split-select">Split</label>
+                            <select id="auto-split-select" class="auto-mode-select">
+                                <option value="always">Always</option>
+                                <option value="never">Never</option>
+                                <option value="recommended" selected>When Recommended</option>
+                            </select>
+                            <label class="auto-mode-label" for="auto-surrender-select">Surrender</label>
+                            <select id="auto-surrender-select" class="auto-mode-select">
+                                <option value="always">Always</option>
+                                <option value="never">Never</option>
+                                <option value="recommended" selected>When Recommended</option>
+                            </select>
                             <div class="auto-mode-actions">
                                 <button class="btn-primary" id="auto-start-btn">Start</button>
                                 <button class="btn-secondary" id="auto-cancel-btn">Cancel</button>
@@ -304,10 +338,11 @@
                     </div>
                 </div>
 
-                <div class="auto-status" id="auto-status" style="display: none;">
-                    <span id="auto-status-text"></span>
-                    <button id="auto-download-log-btn" class="btn-download-log" style="display: none;">Download Log</button>
-                </div>
+            <div class="auto-status" id="auto-status" style="display: none;">
+                <span id="auto-status-text"></span>
+                <button id="auto-download-log-btn" class="btn-download-log" style="display: none;">Download Log</button>
+                <button id="auto-view-log-btn" class="btn-download-log" style="display: none;">View Log</button>
+            </div>
             </div>
 
             <div class="secondary-column">
@@ -378,6 +413,16 @@
         </div>
     </div>
 
+    <!-- Auto Mode Log Viewer -->
+    <div class="auto-log-viewer-overlay" id="auto-log-viewer-overlay" style="display: none;">
+        <div class="auto-log-viewer-panel">
+            <div class="auto-log-viewer-header">
+                <div class="auto-log-viewer-title">Auto Mode Log</div>
+                <button id="auto-log-viewer-close-btn" class="btn-primary btn-log-viewer-close" type="button">Close</button>
+            </div>
+            <textarea id="auto-log-viewer-content" class="auto-log-viewer-content" readonly></textarea>
+        </div>
+    </div>
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loading-overlay" style="display: none;">
         <div class="loading-spinner"></div>
