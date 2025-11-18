@@ -403,13 +403,16 @@ export class UIController {
         if (!this.autoLogViewerOverlayEl) return;
         if (this.autoLogViewerContentEl) {
             this.autoLogViewerContentEl.value = content || '';
-        }
-        this.autoLogViewerOverlayEl.style.display = 'flex';
-        if (this.autoLogViewerContentEl) {
+            // Scroll to top - must happen after display change and DOM update
+            this.autoLogViewerOverlayEl.style.display = 'flex';
             setTimeout(() => {
                 this.autoLogViewerContentEl.scrollTop = 0;
+                this.autoLogViewerContentEl.selectionStart = 0;
+                this.autoLogViewerContentEl.selectionEnd = 0;
                 this.autoLogViewerContentEl.focus();
-            }, 0);
+            }, 50);
+        } else {
+            this.autoLogViewerOverlayEl.style.display = 'flex';
         }
     }
 
