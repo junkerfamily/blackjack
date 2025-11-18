@@ -403,12 +403,14 @@ export class UIController {
         if (!this.autoLogViewerOverlayEl) return;
         if (this.autoLogViewerContentEl) {
             this.autoLogViewerContentEl.value = content || '';
-            this.autoLogViewerContentEl.scrollTop = 0;
+        }
+        this.autoLogViewerOverlayEl.style.display = 'flex';
+        if (this.autoLogViewerContentEl) {
             setTimeout(() => {
+                this.autoLogViewerContentEl.scrollTop = 0;
                 this.autoLogViewerContentEl.focus();
             }, 0);
         }
-        this.autoLogViewerOverlayEl.style.display = 'flex';
     }
 
     hideAutoModeLogViewer() {
