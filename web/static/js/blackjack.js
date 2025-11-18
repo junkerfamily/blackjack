@@ -2381,6 +2381,27 @@ class BlackjackGame {
         }
     }
 
+    copyAutoModeLogToClipboard() {
+        const textarea = document.getElementById('auto-log-viewer-content');
+        if (!textarea || !textarea.value) {
+            this.ui.showMessage('Nothing to copy', 'warn');
+            return;
+        }
+
+        try {
+            navigator.clipboard.writeText(textarea.value).then(() => {
+                this.ui.showMessage('Log copied to clipboard!', 'success');
+            }).catch(() => {
+                // Fallback for older browsers
+                textarea.select();
+                document.execCommand('copy');
+                this.ui.showMessage('Log copied to clipboard!', 'success');
+            });
+        } catch (error) {
+            this.ui.showMessage('Failed to copy to clipboard', 'error');
+        }
+    }
+
     async handleLogHand() {
         if (!this.gameId) {
             this.ui.showMessage('No active game', 'error');

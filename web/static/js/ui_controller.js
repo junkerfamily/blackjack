@@ -11,9 +11,13 @@ export class UIController {
         this.shuffleHideTimeout = null;
         this.autoLogViewerOverlayEl = document.getElementById('auto-log-viewer-overlay');
         this.autoLogViewerCloseBtn = document.getElementById('auto-log-viewer-close-btn');
+        this.autoLogViewerCopyBtn = document.getElementById('auto-log-viewer-copy-btn');
         this.autoLogViewerContentEl = document.getElementById('auto-log-viewer-content');
         if (this.autoLogViewerCloseBtn) {
             this.autoLogViewerCloseBtn.addEventListener('click', () => this.hideAutoModeLogViewer());
+        }
+        if (this.autoLogViewerCopyBtn) {
+            this.autoLogViewerCopyBtn.addEventListener('click', () => this.game.copyAutoModeLogToClipboard());
         }
     }
 

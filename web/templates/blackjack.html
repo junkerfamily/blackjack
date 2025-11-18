@@ -340,7 +340,7 @@
 
             <div class="auto-status" id="auto-status" style="display: none;">
                 <span id="auto-status-text"></span>
-                <button id="auto-download-log-btn" class="btn-download-log" style="display: none;">Download Log</button>
+                <!-- <button id="auto-download-log-btn" class="btn-download-log" style="display: none;">Download Log</button> -->
                 <button id="auto-view-log-btn" class="btn-download-log" style="display: none;">View Log</button>
             </div>
             </div>
@@ -418,7 +418,10 @@
         <div class="auto-log-viewer-panel">
             <div class="auto-log-viewer-header">
                 <div class="auto-log-viewer-title">Auto Mode Log</div>
-                <button id="auto-log-viewer-close-btn" class="btn-primary btn-log-viewer-close" type="button">Close</button>
+                <div class="auto-log-viewer-buttons">
+                    <button id="auto-log-viewer-copy-btn" class="btn-log-viewer-action" type="button" title="Copy log to clipboard">📋 Copy</button>
+                    <button id="auto-log-viewer-close-btn" class="btn-primary btn-log-viewer-close" type="button">Close</button>
+                </div>
             </div>
             <textarea id="auto-log-viewer-content" class="auto-log-viewer-content" readonly></textarea>
         </div>

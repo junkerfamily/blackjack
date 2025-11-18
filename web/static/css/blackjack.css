@@ -1891,6 +1891,30 @@ button:disabled {
     letter-spacing: 0.1em;
 }
 
+.auto-log-viewer-buttons {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.btn-log-viewer-action {
+    padding: 6px 14px;
+    font-size: 0.85em;
+    border-radius: 999px;
+    background: rgba(255, 215, 0, 0.15);
+    border: 1px solid rgba(255, 215, 0, 0.4);
+    color: var(--gold);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.btn-log-viewer-action:hover {
+    background: rgba(255, 215, 0, 0.25);
+    border-color: rgba(255, 215, 0, 0.6);
+    transform: translateY(-1px);
+}
+
 .btn-log-viewer-close {
     padding: 6px 14px;
     font-size: 0.85em;
