@@ -1502,6 +1502,19 @@ class BlackjackGame:
         self.auto_progressive_bet = 0
         self.auto_last_result = None
         self.auto_status = status
+        
+        # Clear the table - auto mode should not leave hands on display
+        # Reset to betting state so manual play can resume cleanly
+        self.player.hands = [Hand()]
+        self.dealer.hand = []
+        self.state = GameState.BETTING
+        self.result = None
+        self.insurance_offer_active = False
+        self.insurance_for_hand_index = None
+        self.insurance_amount = 0
+        self.insurance_taken = False
+        self.even_money_offer_active = False
+        self.insurance_outcome = None
 
     def is_auto_mode_active(self) -> bool:
         return self.auto_mode_active and self.auto_hands_remaining > 0
