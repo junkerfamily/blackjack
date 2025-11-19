@@ -159,7 +159,7 @@ export class AutoModeManager {
         const insuranceMode = radios[0].value;
         const strategy = strategySelect?.value || 'basic';
         const bettingStrategy = bettingStrategySelect?.value || 'fixed';
-        const betPercentage = bettingStrategy === 'percentage' ? parseInt(percentageInput?.value || 5, 10) : null;
+        let betPercentage = bettingStrategy === 'percentage' ? parseInt(percentageInput?.value || 5, 10) : null;
         const doubleDownPref = doubleDownSelect?.value || 'recommended';
         const splitPref = splitSelect?.value || 'recommended';
         const surrenderPref = surrenderSelect?.value || 'recommended';
@@ -212,13 +212,14 @@ export class AutoModeManager {
                         balanceElement.textContent = `$${result.game_state.player.chips}`;
                     }
                     // Update stored chips in gameState without replacing the whole state
-                    if (game.gameState && game.gameState.player) {
-                        game.gameState.player.chips = result.game_state.player.chips;
-                    }
+                    game.gameState = game.gameState || {};
+                    game.gameState.player = game.gameState.player || {};
+                    game.gameState.player.chips = result.game_state.player.chips;
                 }
                 
                 // Update auto_mode status for UI display
-                if (game.gameState && result.game_state?.auto_mode) {
+                if (result.game_state?.auto_mode) {
+                    game.gameState = game.gameState || {};
                     game.gameState.auto_mode = result.game_state.auto_mode;
                 }
                 

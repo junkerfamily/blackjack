@@ -1505,7 +1505,8 @@ class BlackjackGame:
         
         # Clear the table - auto mode should not leave hands on display
         # Reset to betting state so manual play can resume cleanly
-        self.player.hands = [Hand()]
+        self.player.clear_hands()
+        self.player.create_new_hand()
         self.dealer.hand = []
         self.state = GameState.BETTING
         self.result = None

@@ -2,7 +2,6 @@ import { ApiClient } from './api_client.js';
 import { GameStateManager } from './game_state.js';
 import { UIController } from './ui_controller.js';
 import { SettingsManager } from './settings_manager.js';
-import { AutoModeManager } from './auto_mode_manager.js';
 
 /**
  * Blackjack Game UI Logic
@@ -708,22 +707,6 @@ class BlackjackGame {
         
         // Initialize table sign with default values
         this.ui.updateTableSign();
-        
-        // Auto mode controls
-        this.autoPanelVisible = false;
-        const autoBtn = document.getElementById('auto-mode-btn');
-        const autoStartBtn = document.getElementById('auto-start-btn');
-        const autoCancelBtn = document.getElementById('auto-cancel-btn');
-        if (autoBtn) {
-            autoBtn.addEventListener('click', () => this.toggleAutoModePanel());
-        }
-        if (autoCancelBtn) {
-            autoCancelBtn.addEventListener('click', () => this.closeAutoModePanel());
-        }
-        if (autoStartBtn) {
-            autoStartBtn.addEventListener('click', () => this.handleAutoModeStart());
-        }
-        this.prefillAutoModeForm();
         
         // Log Hand button
         const logHandBtn = document.getElementById('log-hand-btn');
@@ -2271,80 +2254,6 @@ class BlackjackGame {
                 button.title = '';
             }
         });
-    }
-
-    prefillAutoModeForm() {
-        this.settingsManager.prefillAutoModeForm();
-    }
-
-    toggleAutoModePanel() {
-        this.settingsManager.toggleAutoModePanel();
-    }
-
-    openAutoModePanel() {
-        this.settingsManager.openAutoModePanel();
-    }
-
-    closeAutoModePanel() {
-        this.settingsManager.closeAutoModePanel();
-    }
-
-    async handleAutoModeStart() {
-        if (!this.gameId) {
-            await this.newGame();
-            if (!this.gameId) return;
-        }
-        const betInput = document.getElementById('auto-bet-input');
-        const handsInput = document.getElementById('auto-hands-input');
-        const radios = document.querySelectorAll('input[name="auto-insurance"]:checked');
-        const errorEl = document.getElementById('auto-error');
-        const autoStartBtn = document.getElementById('auto-start-btn');
-        if (!betInput || !handsInput || radios.length === 0) return;
-        const defaultBet = parseInt(betInput.value, 10);
-        const hands = parseInt(handsInput.value, 10);
-        const insuranceMode = radios[0].value;
-        if (!defaultBet || defaultBet <= 0) {
-            if (errorEl) errorEl.textContent = 'Enter a valid default bet.';
-            return;
-        }
-        if (!hands || hands <= 0) {
-            if (errorEl) errorEl.textContent = 'Enter how many hands to play.';
-            return;
-        }
-        if (errorEl) errorEl.textContent = '';
-        const payload = {
-            game_id: this.gameId,
-            default_bet: defaultBet,
-            hands,
-            insurance_mode: insuranceMode
-        };
-        try {
-            if (autoStartBtn) autoStartBtn.disabled = true;
-            this.ui.showLoading();
-            const result = await this.apiClient.startAutoMode(payload);
-            if (result.success) {
-                this.updateGameState(result.game_state);
-                this.stateManager.saveAutoSettings({ defaultBet, hands, insurance: insuranceMode });
-                const autoStatus = result.game_state?.auto_mode?.status;
-                if (autoStatus) {
-                    this.ui.showMessage(autoStatus, 'info');
-                } else {
-                    this.ui.showMessage(result.message || 'Auto mode complete', 'info');
-                }
-                this.closeAutoModePanel();
-            } else {
-                const errorMsg = result.error || result.message || 'Auto mode failed';
-                this.ui.showMessage(errorMsg, 'error');
-                if (errorEl) errorEl.textContent = errorMsg;
-            }
-        } catch (error) {
-            if (errorEl) errorEl.textContent = error.message || 'Auto mode failed';
-        } finally {
-            this.ui.hideLoading();
-            if (autoStartBtn) autoStartBtn.disabled = false;
-            this.ui.updateButtonStates();
-            this.ui.updateAutoStatusUI();
-        }
     }
 
     downloadAutoModeLog(logFilename) {

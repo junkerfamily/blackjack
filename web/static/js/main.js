@@ -38,6 +38,9 @@ function initializeGame() {
     game.ui = new UIController(game);
     game.settingsManager = new SettingsManager(game);
     game.autoManager = new AutoModeManager(game);
+    if (typeof game.autoManager?.init === 'function') {
+        game.autoManager.init();
+    }
 
     // Setup heckler voices if speech synthesis is available
     if (game.useSpeechSynthesis) {
