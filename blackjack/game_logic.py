@@ -1763,6 +1763,16 @@ class BlackjackGame:
                     
                     player_value = current_hand.get_value()
                     
+                    # FIRST: Check if this is a split aces hand - must stand immediately (no other actions allowed)
+                    if hasattr(current_hand, 'is_from_split_aces') and current_hand.is_from_split_aces:
+                        self._log_auto_event("Split aces hand - auto standing (hits not allowed)")
+                        stand_result = self.stand()
+                        if not stand_result.get('success', False):
+                            self._log_auto_event(f"Stand failed: {stand_result.get('message')}")
+                            self.stop_auto_mode(f"Auto mode stopped: {stand_result.get('message')}")
+                            break
+                        continue
+                    
                     # Check for surrender (only on first action, exactly 2 cards)
                     if self._should_surrender():
                         self._log_auto_event(f"Player value {player_value} - Auto surrendering")
@@ -1784,16 +1794,6 @@ class BlackjackGame:
                         else:
                             # Split successful, continue to play each hand
                             continue
-                    
-                    # If this is a split aces hand, no further actions allowed - stand automatically
-                    if hasattr(current_hand, 'is_from_split_aces') and current_hand.is_from_split_aces:
-                        self._log_auto_event("Split aces hand - auto standing (hits not allowed)")
-                        stand_result = self.stand()
-                        if not stand_result.get('success', False):
-                            self._log_auto_event(f"Stand failed: {stand_result.get('message')}")
-                            self.stop_auto_mode(f"Auto mode stopped: {stand_result.get('message')}")
-                            break
-                        continue
 
                     # Check for double down
                     if self._should_double_down():
