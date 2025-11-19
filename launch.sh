@@ -13,10 +13,29 @@ echo "║                                                              ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
-# Auto-cleanup
-pkill -9 -f "web/app_blackjack_only.py" 2>/dev/null
-for p in 5000 5001 5002 5003; do lsof -ti:$p 2>/dev/null | xargs kill -9 2>/dev/null; done
+# Auto-cleanup - be aggressive about killing Flask processes
+echo "🧹 Cleaning up old processes..."
+pkill -9 -f "web/app_blackjack_only.py" 2>/dev/null && echo "   Killed Flask processes"
+sleep 0.5
+
+# Kill by port (multiple passes to catch reloader processes)
+for p in 5000 5001 5002 5003; do
+    pids=$(lsof -ti:$p 2>/dev/null)
+    if [ ! -z "$pids" ]; then
+        echo "   Killing processes on port $p: $pids"
+        echo "$pids" | xargs kill -9 2>/dev/null
+    fi
+done
 sleep 1
+
+# Final verification that port 5003 is clear
+if lsof -ti:5003 >/dev/null 2>&1; then
+    echo "⚠️  Port 5003 still in use, killing again..."
+    lsof -ti:5003 | xargs kill -9 2>/dev/null
+    sleep 2
+fi
+
+echo "✅ Cleanup complete"
 
 # Activate venv
 [ ! -d "venv" ] && python3 -m venv venv

@@ -13,17 +13,27 @@ echo ""
 
 # Kill any existing Flask processes
 echo "🧹 Cleaning up existing processes..."
-pkill -f "web/app_blackjack_only.py" 2>/dev/null && echo "   Killed previous Flask instance" || echo "   No previous instances found"
+pkill -9 -f "web/app_blackjack_only.py" 2>/dev/null && echo "   Killed previous Flask instances"
+sleep 0.5
 
-# Kill processes on common ports
+# Kill processes on common ports (multiple passes to catch reloader processes)
 for PORT in 5000 5001 5002 5003; do
     PORT_CHECK=$(lsof -ti:$PORT 2>/dev/null)
     if [ ! -z "$PORT_CHECK" ]; then
-        echo "   Killing process on port $PORT (PID: $PORT_CHECK)"
-        kill -9 $PORT_CHECK 2>/dev/null
+        echo "   Killing process on port $PORT (PIDs: $PORT_CHECK)"
+        echo "$PORT_CHECK" | xargs kill -9 2>/dev/null
         sleep 0.5
     fi
 done
+
+# Final verification that port 5003 is clear
+if lsof -ti:5003 >/dev/null 2>&1; then
+    echo "⚠️  Port 5003 still in use, doing final cleanup..."
+    lsof -ti:5003 | xargs kill -9 2>/dev/null
+    sleep 2
+fi
+
+echo "✅ Cleanup complete"
 
 echo ""
 
