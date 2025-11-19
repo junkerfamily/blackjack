@@ -6,44 +6,58 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+echo "════════════════════════════════════════════════════════════"
+echo "  BLACKJACK SERVER LAUNCHER"
+echo "════════════════════════════════════════════════════════════"
+echo ""
+
+# Kill any existing Flask processes
+echo "🧹 Cleaning up existing processes..."
+pkill -f "web/app_blackjack_only.py" 2>/dev/null && echo "   Killed previous Flask instance" || echo "   No previous instances found"
+
+# Kill processes on common ports
+for PORT in 5000 5001 5002 5003; do
+    PORT_CHECK=$(lsof -ti:$PORT 2>/dev/null)
+    if [ ! -z "$PORT_CHECK" ]; then
+        echo "   Killing process on port $PORT (PID: $PORT_CHECK)"
+        kill -9 $PORT_CHECK 2>/dev/null
+        sleep 0.5
+    fi
+done
+
+echo ""
+
 # Check if virtual environment exists
 if [ ! -d "venv" ]; then
-    echo "❌ Virtual environment not found!"
-    echo "Creating virtual environment..."
+    echo "📦 Creating virtual environment..."
     python3 -m venv venv
-    echo "Installing dependencies..."
+    echo "📦 Installing dependencies..."
     source venv/bin/activate
-    pip install -r requirements.txt
+    pip install -q -r requirements.txt
+    echo "✅ Virtual environment ready"
 else
     # Activate virtual environment
     source venv/bin/activate
 fi
 
-# Check if Flask is installed
-if ! python3 -c "import flask" 2>/dev/null; then
-    echo "❌ Flask not found in virtual environment!"
-    echo "Installing Flask..."
-    pip install -r requirements.txt
+# Check if all dependencies are installed
+echo "🔍 Verifying dependencies..."
+if ! python3 -c "import flask, redis" 2>/dev/null; then
+    echo "📦 Installing missing dependencies..."
+    pip install -q -r requirements.txt
+    echo "✅ Dependencies installed"
+else
+    echo "✅ All dependencies present"
 fi
 
-# Check if port 5003 is in use and kill it if needed
-PORT_CHECK=$(lsof -ti:5003 2>/dev/null)
-if [ ! -z "$PORT_CHECK" ]; then
-    echo "⚠️  Port 5003 is in use (PID: $PORT_CHECK)"
-    read -p "Kill the process using port 5003? (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        kill -9 $PORT_CHECK 2>/dev/null
-        echo "✅ Killed process on port 5003"
-        sleep 1
-    else
-        echo "ℹ️  Continuing with port detection (app will find a free port)..."
-    fi
-fi
-
-echo "🚀 Starting Blackjack Flask server..."
-echo "Press Ctrl+C to stop the server"
 echo ""
+echo "════════════════════════════════════════════════════════════"
+echo "🚀 Starting server on port 5003..."
+echo "════════════════════════════════════════════════════════════"
+echo ""
+
+# Export the port so the app uses it
+export FLASK_PORT=5003
 
 # Run the Flask app
 python3 web/app_blackjack_only.py

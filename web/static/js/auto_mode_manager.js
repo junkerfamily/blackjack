@@ -28,6 +28,15 @@ export class AutoModeManager {
             this.autoStartBtn.addEventListener('click', () => this.handleStart());
         }
 
+        // Show/hide percentage input based on betting strategy
+        const bettingStrategySelect = document.getElementById('auto-betting-strategy-select');
+        const percentageContainer = document.getElementById('auto-percentage-container');
+        if (bettingStrategySelect && percentageContainer) {
+            bettingStrategySelect.addEventListener('change', () => {
+                percentageContainer.style.display = bettingStrategySelect.value === 'percentage' ? 'block' : 'none';
+            });
+        }
+
         this.prefillForm();
     }
 
@@ -71,15 +80,56 @@ export class AutoModeManager {
         const betInput = document.getElementById('auto-bet-input');
         const handsInput = document.getElementById('auto-hands-input');
         const radios = document.querySelectorAll('input[name="auto-insurance"]');
+        const strategySelect = document.getElementById('auto-strategy-select');
+        const bettingStrategySelect = document.getElementById('auto-betting-strategy-select');
+        const percentageInput = document.getElementById('auto-percentage-input');
+        const percentageContainer = document.getElementById('auto-percentage-container');
+        const doubleDownSelect = document.getElementById('auto-double-down-select');
+        const splitSelect = document.getElementById('auto-split-select');
+        const surrenderSelect = document.getElementById('auto-surrender-select');
+        
         if (!betInput || !handsInput || radios.length === 0) return;
-        const defaultBet = this.game.autoSettings?.defaultBet ?? this.game.defaultBetAmount ?? 100;
+        
+        const settings = this.game.autoSettings || {};
+        const defaultBet = settings.defaultBet ?? this.game.defaultBetAmount ?? 100;
         betInput.value = defaultBet || 100;
-        const hands = this.game.autoSettings?.hands ?? 5;
+        
+        const hands = settings.hands ?? 5;
         handsInput.value = hands;
-        const insurancePref = this.game.autoSettings?.insurance ?? 'never';
+        
+        const insurancePref = settings.insurance ?? 'never';
         radios.forEach((radio) => {
             radio.checked = radio.value === insurancePref;
         });
+        
+        if (strategySelect) {
+            strategySelect.value = settings.strategy ?? 'basic';
+        }
+        
+        if (bettingStrategySelect) {
+            bettingStrategySelect.value = settings.bettingStrategy ?? 'fixed';
+            // Show/hide percentage input based on betting strategy
+            if (percentageContainer) {
+                percentageContainer.style.display = bettingStrategySelect.value === 'percentage' ? 'block' : 'none';
+            }
+        }
+        
+        if (percentageInput) {
+            percentageInput.value = settings.betPercentage ?? 5;
+        }
+        
+        if (doubleDownSelect) {
+            doubleDownSelect.value = settings.doubleDownPref ?? 'recommended';
+        }
+        
+        if (splitSelect) {
+            splitSelect.value = settings.splitPref ?? 'recommended';
+        }
+        
+        if (surrenderSelect) {
+            surrenderSelect.value = settings.surrenderPref ?? 'recommended';
+        }
+        
         if (this.errorEl) {
             this.errorEl.textContent = '';
         }
@@ -95,10 +145,24 @@ export class AutoModeManager {
         const betInput = document.getElementById('auto-bet-input');
         const handsInput = document.getElementById('auto-hands-input');
         const radios = document.querySelectorAll('input[name="auto-insurance"]:checked');
+        const strategySelect = document.getElementById('auto-strategy-select');
+        const bettingStrategySelect = document.getElementById('auto-betting-strategy-select');
+        const percentageInput = document.getElementById('auto-percentage-input');
+        const doubleDownSelect = document.getElementById('auto-double-down-select');
+        const splitSelect = document.getElementById('auto-split-select');
+        const surrenderSelect = document.getElementById('auto-surrender-select');
+        
         if (!betInput || !handsInput || radios.length === 0) return;
+        
         const defaultBet = parseInt(betInput.value, 10);
         const hands = parseInt(handsInput.value, 10);
         const insuranceMode = radios[0].value;
+        const strategy = strategySelect?.value || 'basic';
+        const bettingStrategy = bettingStrategySelect?.value || 'fixed';
+        const betPercentage = bettingStrategy === 'percentage' ? parseInt(percentageInput?.value || 5, 10) : null;
+        const doubleDownPref = doubleDownSelect?.value || 'recommended';
+        const splitPref = splitSelect?.value || 'recommended';
+        const surrenderPref = surrenderSelect?.value || 'recommended';
 
         if (!defaultBet || defaultBet <= 0) {
             this.setError('Enter a valid default bet.');
@@ -110,13 +174,29 @@ export class AutoModeManager {
             return;
         }
 
+        if (bettingStrategy === 'percentage') {
+            if (!betPercentage || betPercentage <= 0 || betPercentage > 100) {
+                this.setError('Enter a valid bet percentage (1-100).');
+                return;
+            }
+        } else {
+            // Ensure percentage value is cleared if not applicable
+            betPercentage = null;
+        }
+
         this.setError('');
 
         const payload = {
             game_id: game.gameId,
             default_bet: defaultBet,
             hands,
-            insurance_mode: insuranceMode
+            insurance_mode: insuranceMode,
+            strategy: strategy,
+            betting_strategy: bettingStrategy,
+            bet_percentage: betPercentage,
+            double_down_pref: doubleDownPref,
+            split_pref: splitPref,
+            surrender_pref: surrenderPref
         };
 
         try {
@@ -125,7 +205,17 @@ export class AutoModeManager {
             const result = await game.apiClient.startAutoMode(payload);
             if (result.success) {
                 game.updateGameState(result.game_state);
-                game.autoSettings = { defaultBet, hands, insurance: insuranceMode };
+                game.autoSettings = {
+                    defaultBet,
+                    hands,
+                    insurance: insuranceMode,
+                    strategy,
+                    bettingStrategy,
+                    betPercentage,
+                    doubleDownPref,
+                    splitPref,
+                    surrenderPref
+                };
                 game.stateManager.saveAutoSettings(game.autoSettings);
                 const autoStatus = result.game_state?.auto_mode?.status;
                 game.ui.showMessage(autoStatus || result.message || 'Auto mode complete', 'info');

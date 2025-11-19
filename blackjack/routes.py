@@ -3,21 +3,95 @@ Blackjack game API endpoints
 """
 
 import json
+import logging
 import os
+from typing import Optional
+
+import redis
+from redis.exceptions import RedisError
 from flask import Blueprint, request, jsonify, send_file
 from blackjack.game_logic import BlackjackGame, GameState
 
-# Store active games (in production, use Redis or database)
+# Store active games locally as an in-memory cache
 active_games: dict = {}
+
+logger = logging.getLogger(__name__)
+
+REDIS_URL = os.getenv('REDIS_URL')
+REDIS_TTL_SECONDS = int(os.getenv('GAME_STATE_TTL', '86400'))
+
+try:
+    redis_client: Optional[redis.Redis] = redis.from_url(REDIS_URL, decode_responses=True) if REDIS_URL else None
+except Exception as exc:
+    logger.warning("Failed to initialize Redis client: %s", exc)
+    redis_client = None
+
+
+def _redis_key(game_id: str) -> str:
+    return f"game:{game_id}"
+
+
+def _load_game_from_redis(game_id: str) -> Optional[BlackjackGame]:
+    if not redis_client:
+        return None
+    try:
+        payload = redis_client.get(_redis_key(game_id))
+        if not payload:
+            return None
+        data = json.loads(payload)
+        game = BlackjackGame.from_storage_dict(data)
+        # Ensure the stored ID aligns with the requested key
+        game.game_id = game_id
+        return game
+    except (RedisError, json.JSONDecodeError, KeyError, ValueError) as exc:
+        logger.warning("Failed to load game %s from Redis: %s", game_id, exc)
+        return None
+
+
+def _save_game_to_redis(game: BlackjackGame):
+    if not redis_client:
+        return
+    try:
+        payload = game.to_storage_dict()
+        redis_client.setex(_redis_key(game.game_id), REDIS_TTL_SECONDS, json.dumps(payload))
+    except RedisError as exc:
+        logger.warning("Failed to persist game %s to Redis: %s", game.game_id, exc)
+
+
+def _delete_game_from_redis(game_id: str):
+    if not redis_client:
+        return
+    try:
+        redis_client.delete(_redis_key(game_id))
+    except RedisError as exc:
+        logger.warning("Failed to delete game %s from Redis: %s", game_id, exc)
+
 
 blackjack_bp = Blueprint('blackjack', __name__, url_prefix='/api')
 
 
-def get_game(game_id: str) -> BlackjackGame:
-    """Get a game by ID, create if doesn't exist"""
-    if game_id not in active_games:
-        active_games[game_id] = BlackjackGame(starting_chips=10000, num_decks=6)
-    return active_games[game_id]
+def get_game(game_id: Optional[str]) -> BlackjackGame:
+    """Get a game by ID, restoring from Redis if available or creating a new one."""
+    if game_id:
+        cached = active_games.get(game_id)
+        if cached:
+            return cached
+
+        restored = _load_game_from_redis(game_id)
+        if restored:
+            active_games[game_id] = restored
+            return restored
+
+        # No stored game - create a fresh instance with provided ID
+        game = BlackjackGame(starting_chips=10000, num_decks=6)
+        game.game_id = game_id
+        active_games[game_id] = game
+        return game
+
+    # No game_id provided - create a new game with its own ID
+    game = BlackjackGame(starting_chips=10000, num_decks=6)
+    active_games[game.game_id] = game
+    return game
 
 
 @blackjack_bp.route('/new_game', methods=['POST'])
@@ -71,6 +145,7 @@ def new_game():
             active_games[game.game_id] = game
         
         game.new_game()
+        _save_game_to_redis(game)
         
         return jsonify({
             'success': True,
@@ -100,19 +175,17 @@ def place_bet():
         
         game = get_game(game_id)
         result = game.place_bet(amount)
-        
-        if result['success']:
-            return jsonify({
-                'success': True,
-                'message': result['message'],
-                'game_state': game.get_game_state()
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': result['message'],
-                'game_state': game.get_game_state()
-            }), 400
+        success = result.get('success', False)
+        status = 200 if success else 400
+        payload = {
+            'success': success,
+            'message': result.get('message', ''),
+            'game_state': game.get_game_state()
+        }
+        if not success:
+            payload['error'] = result.get('message', '')
+        _save_game_to_redis(game)
+        return jsonify(payload), status
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -129,21 +202,19 @@ def deal():
         
         game = get_game(game_id)
         result = game.deal_initial_cards()
-        
-        if result['success']:
-            return jsonify({
-                'success': True,
-                'message': result['message'],
-                'game_over': result.get('game_over', False),
-                'dealer_peeked': result.get('dealer_peeked', False),
-                'game_state': game.get_game_state()
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': result['message'],
-                'game_state': game.get_game_state()
-            }), 400
+        success = result.get('success', False)
+        status = 200 if success else 400
+        payload = {
+            'success': success,
+            'message': result.get('message', ''),
+            'game_over': result.get('game_over', False),
+            'dealer_peeked': result.get('dealer_peeked', False),
+            'game_state': game.get_game_state()
+        }
+        if not success:
+            payload['error'] = result.get('message', '')
+        _save_game_to_redis(game)
+        return jsonify(payload), status
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -160,14 +231,15 @@ def hit():
         
         game = get_game(game_id)
         result = game.hit()
-        
-        return jsonify({
+        payload = {
             'success': result['success'],
             'message': result.get('message', ''),
             'bust': result.get('bust', False),
             'game_over': result.get('game_over', False),
             'game_state': game.get_game_state()
-        })
+        }
+        _save_game_to_redis(game)
+        return jsonify(payload)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -184,13 +256,14 @@ def stand():
         
         game = get_game(game_id)
         result = game.stand()
-        
-        return jsonify({
+        payload = {
             'success': result['success'],
             'message': result.get('message', ''),
             'game_over': result.get('game_over', False),
             'game_state': game.get_game_state()
-        })
+        }
+        _save_game_to_redis(game)
+        return jsonify(payload)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -207,14 +280,15 @@ def double_down():
         
         game = get_game(game_id)
         result = game.double_down()
-        
-        return jsonify({
+        payload = {
             'success': result['success'],
             'message': result.get('message', ''),
             'bust': result.get('bust', False),
             'game_over': result.get('game_over', False),
             'game_state': game.get_game_state()
-        })
+        }
+        _save_game_to_redis(game)
+        return jsonify(payload)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -231,12 +305,13 @@ def split():
         
         game = get_game(game_id)
         result = game.split()
-        
-        return jsonify({
+        payload = {
             'success': result['success'],
             'message': result.get('message', ''),
             'game_state': game.get_game_state()
-        })
+        }
+        _save_game_to_redis(game)
+        return jsonify(payload)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -253,13 +328,14 @@ def surrender():
         
         game = get_game(game_id)
         result = game.surrender()
-        
-        return jsonify({
+        payload = {
             'success': result['success'],
             'message': result.get('message', ''),
             'game_over': result.get('game_over', False),
             'game_state': game.get_game_state()
-        })
+        }
+        _save_game_to_redis(game)
+        return jsonify(payload)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -298,13 +374,15 @@ def insurance():
         game = get_game(game_id)
         result = game.insurance_decision(decision)
         status = 200 if result.get('success') else 400
-        return jsonify({
+        payload = {
             'success': result.get('success', False),
             'message': result.get('message', ''),
             'game_over': result.get('game_over', False),
             'dealer_peeked': result.get('dealer_peeked', False),
             'game_state': game.get_game_state()
-        }), status
+        }
+        _save_game_to_redis(game)
+        return jsonify(payload), status
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -365,11 +443,13 @@ def auto_mode_start():
         if result.get('success'):
             game.run_auto_cycle()
         status = 200 if result.get('success') else 400
-        return jsonify({
+        payload = {
             'success': result.get('success', False),
             'message': result.get('message', ''),
             'game_state': game.get_game_state()
-        }), status
+        }
+        _save_game_to_redis(game)
+        return jsonify(payload), status
     except Exception as e:
         import traceback
         error_msg = str(e)
@@ -389,11 +469,13 @@ def auto_mode_stop():
         game = get_game(game_id)
         result = game.stop_auto_mode_request()
         status = 200 if result.get('success') else 400
-        return jsonify({
+        payload = {
             'success': result.get('success', False),
             'message': result.get('message', ''),
             'game_state': game.get_game_state()
-        }), status
+        }
+        _save_game_to_redis(game)
+        return jsonify(payload), status
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -500,11 +582,13 @@ def log_hand():
         result = game.log_hand()
         
         status = 200 if result.get('success') else 400
-        return jsonify({
+        payload = {
             'success': result.get('success', False),
             'message': result.get('message', ''),
             'game_state': game.get_game_state()
-        }), status
+        }
+        _save_game_to_redis(game)
+        return jsonify(payload), status
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -599,12 +683,13 @@ def force_dealer_hand():
         
         game = get_game(game_id)
         result = game.set_force_dealer_hand(hand_string)
-        
-        return jsonify({
+        payload = {
             'success': result.get('success', False),
             'message': result.get('message', ''),
             'game_state': game.get_game_state()
-        })
+        }
+        _save_game_to_redis(game)
+        return jsonify(payload)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

@@ -88,12 +88,23 @@ if __name__ == '__main__':
     # Run in debug mode only if PORT is not set (local development)
     debug_mode = not bool(os.environ.get('PORT'))
     
-    print(f"\n🚀 Blackjack server starting on port {port}")
-    print(f"📍 Game: http://localhost:{port}/blackjack")
-    print(f"📍 Card test: http://localhost:{port}/cards-test")
-    print(f"📍 Dealer peek demo: http://localhost:{port}/dealer-peek-demo")
+    # Print big obvious banner with port info
+    print("\n")
+    print("╔═══════════════════════════════════════════════════════════════════╗")
+    print("║                                                                   ║")
+    print("║              ✅  BLACKJACK SERVER READY  ✅                       ║")
+    print("║                                                                   ║")
+    print(f"║              PORT: {port:<4}                                          ║")
+    print("║                                                                   ║")
+    print(f"║              🎰 PLAY: http://localhost:{port}/blackjack{' ' * (19 - len(str(port)))}║")
+    print("║                                                                   ║")
+    print("╚═══════════════════════════════════════════════════════════════════╝")
+    print("")
+    print(f"   📍 Card test:        http://localhost:{port}/cards-test")
+    print(f"   📍 Dealer peek demo: http://localhost:{port}/dealer-peek-demo")
+    print(f"   📍 Health check:     http://localhost:{port}/health")
     if debug_mode:
-        print(f"\nPress Ctrl+C to stop the server\n")
+        print(f"\n   Press Ctrl+C to stop the server\n")
     
     app.run(debug=debug_mode, host='0.0.0.0', port=port)
 

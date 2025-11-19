@@ -7,7 +7,7 @@ import os
 import copy
 import traceback
 from datetime import datetime
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 from blackjack.deck import Deck, Card, calculate_hand_value, is_blackjack
 from blackjack.player import Player, Hand
 from blackjack.dealer import Dealer
@@ -1864,4 +1864,208 @@ class BlackjackGame:
 
         if not self.auto_mode_active and not self.auto_status:
             self.auto_status = 'Auto mode stopped'
+
+    # ------------------------------------------------------------
+    # Persistence helpers
+    # ------------------------------------------------------------
+    def _serialize_card(self, card: Card) -> Dict[str, str]:
+        return {'suit': card.suit, 'rank': card.rank}
+
+    def _deserialize_card(self, payload: Dict[str, str]) -> Card:
+        return Card(payload['suit'], payload['rank'])
+
+    def _serialize_hand_state(self, hand: Hand) -> Dict[str, Any]:
+        return {
+            'cards': [self._serialize_card(card) for card in hand.cards],
+            'bet': hand.bet,
+            'is_doubled_down': hand.is_doubled_down,
+            'is_split': hand.is_split,
+            'is_from_split_aces': hand.is_from_split_aces,
+            'is_surrendered': hand.is_surrendered
+        }
+
+    def _deserialize_hand_state(self, payload: Dict[str, Any]) -> Hand:
+        cards = [self._deserialize_card(card_data) for card_data in payload.get('cards', [])]
+        hand = Hand(cards)
+        hand.bet = payload.get('bet', 0)
+        hand.is_doubled_down = payload.get('is_doubled_down', False)
+        hand.is_split = payload.get('is_split', False)
+        hand.is_from_split_aces = payload.get('is_from_split_aces', False)
+        hand.is_surrendered = payload.get('is_surrendered', False)
+        return hand
+
+    def to_storage_dict(self) -> Dict[str, Any]:
+        """Serialize game state into a JSON-safe dictionary for persistence."""
+        player_hands = [self._serialize_hand_state(hand) for hand in self.player.hands]
+        dealer_cards = [self._serialize_card(card) for card in self.dealer.hand]
+        pending_forced = None
+        if self._pending_forced_dealer_cards:
+            pending_forced = [self._serialize_card(card) for card in self._pending_forced_dealer_cards]
+
+        return {
+            'version': 1,
+            'game_id': self.game_id,
+            'num_decks': self.num_decks,
+            'deck': [self._serialize_card(card) for card in self.deck.cards],
+            'player': {
+                'chips': self.player.chips,
+                'current_hand_index': self.player.current_hand_index,
+                'total_wins': self.player.total_wins,
+                'total_losses': self.player.total_losses,
+                'total_blackjacks': self.player.total_blackjacks,
+                'hands': player_hands
+            },
+            'dealer': {
+                'hand': dealer_cards,
+                'hole_card_hidden': self.dealer.hole_card_hidden
+            },
+            'state': self.state,
+            'result': self.result,
+            'min_bet': self.min_bet,
+            'max_bet': self.max_bet,
+            'dealer_hits_soft_17': self.dealer_hits_soft_17,
+            'insurance': {
+                'offer_active': self.insurance_offer_active,
+                'for_hand_index': self.insurance_for_hand_index,
+                'amount': self.insurance_amount,
+                'taken': self.insurance_taken,
+                'even_money_offer_active': self.even_money_offer_active,
+                'outcome': self.insurance_outcome
+            },
+            'auto_mode': {
+                'active': self.auto_mode_active,
+                'hands_remaining': self.auto_hands_remaining,
+                'default_bet': self.auto_default_bet,
+                'insurance_mode': self.auto_insurance_mode,
+                'strategy': self.auto_strategy,
+                'betting_strategy': self.auto_betting_strategy,
+                'bet_percentage': self.auto_bet_percentage,
+                'double_down_pref': self.auto_double_down_pref,
+                'split_pref': self.auto_split_pref,
+                'surrender_pref': self.auto_surrender_pref,
+                'progressive_bet': self.auto_progressive_bet,
+                'last_result': self.auto_last_result
+            },
+            'auto_status': self.auto_status,
+            'auto_mode_log_filename': self.auto_mode_log_filename,
+            'round_history': self.round_history,
+            'current_round_audit': self.current_round_audit,
+            'round_counter': self.round_counter,
+            'last_shuffle_event': self.last_shuffle_event,
+            'dealer_peeked': self.dealer_peeked,
+            'force_dealer_hand': self.force_dealer_hand,
+            'pending_forced_dealer_cards': pending_forced,
+            'split_summary': getattr(self, 'split_summary', None)
+        }
+
+    @classmethod
+    def from_storage_dict(cls, payload: Dict[str, Any]) -> "BlackjackGame":
+        """Rebuild a BlackjackGame instance from serialized state."""
+        player_payload = payload.get('player', {})
+        starting_chips = player_payload.get('chips', 1000)
+        num_decks = payload.get('num_decks', 6)
+        min_bet = payload.get('min_bet', 5)
+        max_bet = payload.get('max_bet', 500)
+        dealer_hits_soft_17 = payload.get('dealer_hits_soft_17', False)
+
+        game = cls(
+            starting_chips=starting_chips,
+            num_decks=num_decks,
+            min_bet=min_bet,
+            max_bet=max_bet,
+            dealer_hits_soft_17=dealer_hits_soft_17
+        )
+        game.game_id = payload.get('game_id', game.game_id)
+
+        # Restore deck
+        deck_cards = payload.get('deck', [])
+        game.deck.cards = [game._deserialize_card(card_data) for card_data in deck_cards]
+        game.deck.num_decks = num_decks
+
+        # Restore player
+        game.player.chips = player_payload.get('chips', game.player.chips)
+        game.player.total_wins = player_payload.get('total_wins', 0)
+        game.player.total_losses = player_payload.get('total_losses', 0)
+        game.player.total_blackjacks = player_payload.get('total_blackjacks', 0)
+        hands_payload = player_payload.get('hands', [])
+        game.player.hands = [game._deserialize_hand_state(hand) for hand in hands_payload]
+        if not game.player.hands:
+            game.player.create_new_hand()
+        max_index = max(len(game.player.hands) - 1, 0)
+        requested_index = player_payload.get('current_hand_index', 0)
+        game.player.current_hand_index = min(max(requested_index, 0), max_index)
+
+        # Restore dealer
+        dealer_payload = payload.get('dealer', {})
+        game.dealer.hand = [game._deserialize_card(card) for card in dealer_payload.get('hand', [])]
+        game.dealer.hole_card_hidden = dealer_payload.get('hole_card_hidden', True)
+
+        # Basic state
+        game.state = payload.get('state', GameState.BETTING)
+        game.result = payload.get('result')
+
+        # Insurance / even money
+        insurance_payload = payload.get('insurance', {})
+        game.insurance_offer_active = insurance_payload.get('offer_active', False)
+        game.insurance_for_hand_index = insurance_payload.get('for_hand_index')
+        game.insurance_amount = insurance_payload.get('amount', 0)
+        game.insurance_taken = insurance_payload.get('taken', False)
+        game.even_money_offer_active = insurance_payload.get('even_money_offer_active', False)
+        game.insurance_outcome = insurance_payload.get('outcome')
+
+        # Auto mode
+        auto_payload = payload.get('auto_mode', {})
+        game.auto_mode_active = auto_payload.get('active', False)
+        game.auto_hands_remaining = auto_payload.get('hands_remaining', 0)
+        game.auto_default_bet = auto_payload.get('default_bet', 0)
+        game.auto_insurance_mode = auto_payload.get('insurance_mode')
+        game.auto_strategy = auto_payload.get('strategy', 'basic')
+        game.auto_betting_strategy = auto_payload.get('betting_strategy', 'fixed')
+        game.auto_bet_percentage = auto_payload.get('bet_percentage')
+        game.auto_double_down_pref = auto_payload.get('double_down_pref', 'recommended')
+        game.auto_split_pref = auto_payload.get('split_pref', 'recommended')
+        game.auto_surrender_pref = auto_payload.get('surrender_pref', 'recommended')
+        game.auto_progressive_bet = auto_payload.get('progressive_bet', 0)
+        game.auto_last_result = auto_payload.get('last_result')
+        game.auto_status = payload.get('auto_status')
+        game.auto_mode_log_filename = payload.get('auto_mode_log_filename')
+
+        # Round tracking
+        game.round_history = payload.get('round_history', [])
+        game.current_round_audit = payload.get('current_round_audit')
+        game.round_counter = payload.get('round_counter', 0)
+        game.last_shuffle_event = payload.get('last_shuffle_event')
+        game.dealer_peeked = payload.get('dealer_peeked', False)
+        game.force_dealer_hand = payload.get('force_dealer_hand')
+
+        pending_forced = payload.get('pending_forced_dealer_cards')
+        if pending_forced:
+            cards = [game._deserialize_card(card) for card in pending_forced]
+            if len(cards) == 2:
+                game._pending_forced_dealer_cards = (cards[0], cards[1])
+            else:
+                game._pending_forced_dealer_cards = None
+        else:
+            game._pending_forced_dealer_cards = None
+
+        game.split_summary = payload.get('split_summary')
+
+        # Re-open auto mode log file if applicable
+        if game.auto_mode_log_filename:
+            try:
+                current_file = os.path.abspath(__file__)
+                blackjack_dir = os.path.dirname(current_file)
+                project_root = os.path.dirname(blackjack_dir)
+                if not os.path.exists(project_root):
+                    project_root = os.getcwd()
+                log_dir = os.path.join(project_root, 'AutoMode')
+                os.makedirs(log_dir, exist_ok=True)
+                log_path = os.path.join(log_dir, game.auto_mode_log_filename)
+                game.auto_mode_log_file = open(log_path, 'a', encoding='utf-8')
+            except Exception:
+                game.auto_mode_log_file = None
+        else:
+            game.auto_mode_log_file = None
+
+        return game
 

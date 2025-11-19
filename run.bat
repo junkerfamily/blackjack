@@ -4,38 +4,58 @@ REM Blackjack Game - Flask Server Startup Script (Windows)
 REM Change to script directory
 cd /d "%~dp0"
 
+echo ============================================================
+echo   BLACKJACK SERVER LAUNCHER
+echo ============================================================
+echo.
+
+REM Kill any existing Flask processes
+echo Cleaning up existing processes...
+taskkill /F /IM python.exe /FI "WINDOWTITLE eq *app_blackjack_only*" >nul 2>&1
+
+REM Kill processes on common ports
+for %%P in (5000 5001 5002 5003) do (
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%%P') do (
+        taskkill /F /PID %%a >nul 2>&1
+        echo    Killed process on port %%P
+    )
+)
+
+echo    No previous instances found (or already cleaned)
+echo.
+
 REM Check if virtual environment exists
 if not exist "venv" (
-    echo Virtual environment not found!
     echo Creating virtual environment...
     python -m venv venv
     echo Installing dependencies...
     call venv\Scripts\activate.bat
-    pip install -r requirements.txt
+    pip install -q -r requirements.txt
+    echo Virtual environment ready
 ) else (
     REM Activate virtual environment
     call venv\Scripts\activate.bat
 )
 
-REM Check if Flask is installed
-python -c "import flask" 2>nul
+REM Check if all dependencies are installed
+echo Verifying dependencies...
+python -c "import flask, redis" 2>nul
 if errorlevel 1 (
-    echo Flask not found in virtual environment!
-    echo Installing Flask...
-    pip install -r requirements.txt
+    echo Installing missing dependencies...
+    pip install -q -r requirements.txt
+    echo Dependencies installed
+) else (
+    echo All dependencies present
 )
 
-REM Check if port 5000 is in use
-netstat -ano | findstr :5000 >nul
-if %errorlevel% equ 0 (
-    echo Port 5000 is already in use.
-    echo The app will automatically find a free port.
-    echo.
-)
-
-echo Starting Blackjack Flask server...
-echo Press Ctrl+C to stop the server
 echo.
+echo ============================================================
+echo Starting server on port 5003...
+echo ============================================================
+echo.
+
+REM Set the port
+set FLASK_PORT=5003
 
 REM Run the Flask app
 python web\app_blackjack_only.py

@@ -562,17 +562,58 @@ export class SettingsManager {
     prefillAutoModeForm() {
         const betInput = document.getElementById('auto-bet-input');
         const handsInput = document.getElementById('auto-hands-input');
-        const radios = document.querySelectorAll('input[name="auto-insurance"]:checked');
+        const radios = document.querySelectorAll('input[name="auto-insurance"]');
+        const strategySelect = document.getElementById('auto-strategy-select');
+        const bettingStrategySelect = document.getElementById('auto-betting-strategy-select');
+        const percentageInput = document.getElementById('auto-percentage-input');
+        const percentageContainer = document.getElementById('auto-percentage-container');
+        const doubleDownSelect = document.getElementById('auto-double-down-select');
+        const splitSelect = document.getElementById('auto-split-select');
+        const surrenderSelect = document.getElementById('auto-surrender-select');
+        
         if (!betInput || !handsInput || radios.length === 0) return;
+        
         const game = this.game;
-        const defaultBet = game.autoSettings?.defaultBet ?? game.defaultBetAmount ?? 100;
+        const settings = game.autoSettings || {};
+        const defaultBet = settings.defaultBet ?? game.defaultBetAmount ?? 100;
         betInput.value = defaultBet || 100;
-        const hands = game.autoSettings?.hands ?? 5;
+        
+        const hands = settings.hands ?? 5;
         handsInput.value = hands;
-        const insurancePref = game.autoSettings?.insurance ?? 'never';
+        
+        const insurancePref = settings.insurance ?? 'never';
         radios.forEach(radio => {
             radio.checked = radio.value === insurancePref;
         });
+        
+        if (strategySelect) {
+            strategySelect.value = settings.strategy ?? 'basic';
+        }
+        
+        if (bettingStrategySelect) {
+            bettingStrategySelect.value = settings.bettingStrategy ?? 'fixed';
+            // Show/hide percentage input based on betting strategy
+            if (percentageContainer) {
+                percentageContainer.style.display = bettingStrategySelect.value === 'percentage' ? 'block' : 'none';
+            }
+        }
+        
+        if (percentageInput) {
+            percentageInput.value = settings.betPercentage ?? 5;
+        }
+        
+        if (doubleDownSelect) {
+            doubleDownSelect.value = settings.doubleDownPref ?? 'recommended';
+        }
+        
+        if (splitSelect) {
+            splitSelect.value = settings.splitPref ?? 'recommended';
+        }
+        
+        if (surrenderSelect) {
+            surrenderSelect.value = settings.surrenderPref ?? 'recommended';
+        }
+        
         const errorEl = document.getElementById('auto-error');
         if (errorEl) errorEl.textContent = '';
     }

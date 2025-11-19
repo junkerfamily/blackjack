@@ -216,22 +216,58 @@ export class GameStateManager {
 
     loadAutoSettings() {
         if (!hasLocalStorage()) {
-            return { defaultBet: null, hands: 5, insurance: 'never' };
+            return {
+                defaultBet: null,
+                hands: 5,
+                insurance: 'never',
+                strategy: 'basic',
+                bettingStrategy: 'fixed',
+                betPercentage: 5,
+                doubleDownPref: 'recommended',
+                splitPref: 'recommended',
+                surrenderPref: 'recommended'
+            };
         }
         try {
             const stored = window.localStorage.getItem(this.autoSettingsKey);
             if (!stored) {
-                return { defaultBet: null, hands: 5, insurance: 'never' };
+                return {
+                    defaultBet: null,
+                    hands: 5,
+                    insurance: 'never',
+                    strategy: 'basic',
+                    bettingStrategy: 'fixed',
+                    betPercentage: 5,
+                    doubleDownPref: 'recommended',
+                    splitPref: 'recommended',
+                    surrenderPref: 'recommended'
+                };
             }
             const parsed = JSON.parse(stored);
             return {
                 defaultBet: parsed?.defaultBet ?? null,
                 hands: parsed?.hands ?? 5,
-                insurance: parsed?.insurance ?? 'never'
+                insurance: parsed?.insurance ?? 'never',
+                strategy: parsed?.strategy ?? 'basic',
+                bettingStrategy: parsed?.bettingStrategy ?? 'fixed',
+                betPercentage: parsed?.betPercentage ?? 5,
+                doubleDownPref: parsed?.doubleDownPref ?? 'recommended',
+                splitPref: parsed?.splitPref ?? 'recommended',
+                surrenderPref: parsed?.surrenderPref ?? 'recommended'
             };
         } catch (error) {
             console.warn('Failed to load auto settings:', error);
-            return { defaultBet: null, hands: 5, insurance: 'never' };
+            return {
+                defaultBet: null,
+                hands: 5,
+                insurance: 'never',
+                strategy: 'basic',
+                bettingStrategy: 'fixed',
+                betPercentage: 5,
+                doubleDownPref: 'recommended',
+                splitPref: 'recommended',
+                surrenderPref: 'recommended'
+            };
         }
     }
 
@@ -243,7 +279,13 @@ export class GameStateManager {
             window.localStorage.setItem(this.autoSettingsKey, JSON.stringify({
                 defaultBet: settings?.defaultBet ?? null,
                 hands: settings?.hands ?? 5,
-                insurance: settings?.insurance ?? 'never'
+                insurance: settings?.insurance ?? 'never',
+                strategy: settings?.strategy ?? 'basic',
+                bettingStrategy: settings?.bettingStrategy ?? 'fixed',
+                betPercentage: settings?.betPercentage ?? 5,
+                doubleDownPref: settings?.doubleDownPref ?? 'recommended',
+                splitPref: settings?.splitPref ?? 'recommended',
+                surrenderPref: settings?.surrenderPref ?? 'recommended'
             }));
         } catch (error) {
             console.warn('Failed to save auto settings:', error);
