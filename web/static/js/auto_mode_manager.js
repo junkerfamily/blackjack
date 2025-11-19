@@ -204,7 +204,24 @@ export class AutoModeManager {
             game.ui.showLoading();
             const result = await game.apiClient.startAutoMode(payload);
             if (result.success) {
-                game.updateGameState(result.game_state);
+                // Don't update full game state - auto mode should not affect the table
+                // Only update bankroll and auto_mode status
+                if (result.game_state?.player?.chips !== undefined) {
+                    const balanceElement = document.getElementById('balance');
+                    if (balanceElement) {
+                        balanceElement.textContent = `$${result.game_state.player.chips}`;
+                    }
+                    // Update stored chips in gameState without replacing the whole state
+                    if (game.gameState && game.gameState.player) {
+                        game.gameState.player.chips = result.game_state.player.chips;
+                    }
+                }
+                
+                // Update auto_mode status for UI display
+                if (game.gameState && result.game_state?.auto_mode) {
+                    game.gameState.auto_mode = result.game_state.auto_mode;
+                }
+                
                 game.autoSettings = {
                     defaultBet,
                     hands,
