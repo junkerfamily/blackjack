@@ -3,11 +3,13 @@ const hasLocalStorage = () => {
 };
 
 export class GameStateManager {
-    constructor({ defaultBankrollAmount = 1000, defaultDealerHitDelayMs = 1000 } = {}) {
+    constructor({ defaultBankrollAmount = 1000, defaultDealerHitDelayMs = 1000, defaultPlayerHitDelayMs = 150 } = {}) {
         this.defaultBankrollAmount = defaultBankrollAmount;
         this.defaultDealerHitDelayMs = defaultDealerHitDelayMs;
+        this.defaultPlayerHitDelayMs = defaultPlayerHitDelayMs;
         this.bankrollConfigKey = 'blackjack_bankroll_config';
         this.dealerHitDelayKey = 'blackjack_dealer_delay_ms';
+        this.playerHitDelayKey = 'blackjack_player_delay_ms';
         this.dealerHitsSoft17Key = 'blackjack_dealer_hits_soft17';
         this.defaultBetKey = 'blackjack_default_bet';
         this.autoSettingsKey = 'blackjack_auto_settings';
@@ -152,6 +154,75 @@ export class GameStateManager {
             window.localStorage.setItem(this.dealerHitDelayKey, String(delay));
         } catch (error) {
             console.warn('Failed to save dealer delay config:', error);
+        }
+    }
+
+    normalizePlayerHitDelay(rawValue, fallbackDelay = this.defaultPlayerHitDelayMs) {
+        const minDelay = 0;
+        const maxDelay = 5000;
+        const fallbackParsed = Number.parseInt(fallbackDelay, 10);
+        const safeFallback = Number.isNaN(fallbackParsed)
+            ? this.defaultPlayerHitDelayMs
+            : Math.min(Math.max(fallbackParsed, minDelay), maxDelay);
+
+        if (rawValue === undefined || rawValue === null || rawValue === '') {
+            return {
+                delay: safeFallback,
+                fallbackUsed: true,
+                clamped: false,
+                clampedToMin: false,
+                clampedToMax: false
+            };
+        }
+
+        const parsed = Number.parseInt(rawValue, 10);
+        if (Number.isNaN(parsed)) {
+            return {
+                delay: safeFallback,
+                fallbackUsed: true,
+                clamped: false,
+                clampedToMin: false,
+                clampedToMax: false
+            };
+        }
+
+        const clampedValue = Math.min(Math.max(parsed, minDelay), maxDelay);
+        return {
+            delay: clampedValue,
+            fallbackUsed: false,
+            clamped: clampedValue !== parsed,
+            clampedToMin: clampedValue === minDelay && parsed < minDelay,
+            clampedToMax: clampedValue === maxDelay && parsed > maxDelay
+        };
+    }
+
+    loadPlayerHitDelay() {
+        if (!hasLocalStorage()) {
+            return this.defaultPlayerHitDelayMs;
+        }
+
+        try {
+            const stored = window.localStorage.getItem(this.playerHitDelayKey);
+            if (!stored) {
+                return this.defaultPlayerHitDelayMs;
+            }
+            const { delay } = this.normalizePlayerHitDelay(stored, this.defaultPlayerHitDelayMs);
+            return delay;
+        } catch (error) {
+            console.warn('Failed to load player delay config:', error);
+            return this.defaultPlayerHitDelayMs;
+        }
+    }
+
+    savePlayerHitDelay(delay) {
+        if (!hasLocalStorage()) {
+            return;
+        }
+
+        try {
+            window.localStorage.setItem(this.playerHitDelayKey, String(delay));
+        } catch (error) {
+            console.warn('Failed to save player delay config:', error);
         }
     }
 

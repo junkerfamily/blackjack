@@ -13,27 +13,55 @@ echo ""
 
 # Kill any existing Flask processes
 echo "🧹 Cleaning up existing processes..."
-pkill -9 -f "web/app_blackjack_only.py" 2>/dev/null && echo "   Killed previous Flask instances"
+
+# Method 1: Kill by process name (catches Flask and Python processes)
+pkill -9 -f "web/app_blackjack_only.py" 2>/dev/null && echo "   Killed Flask processes by name"
+pkill -9 -f "flask run" 2>/dev/null && echo "   Killed Flask run processes"
+pkill -9 -f "gunicorn.*app_blackjack" 2>/dev/null && echo "   Killed Gunicorn processes"
 sleep 0.5
 
-# Kill processes on common ports (multiple passes to catch reloader processes)
-for PORT in 5000 5001 5002 5003; do
-    PORT_CHECK=$(lsof -ti:$PORT 2>/dev/null)
+# Method 2: Kill by port (multiple passes to catch reloader processes)
+for attempt in 1 2 3; do
+    for PORT in 5000 5001 5002 5003; do
+        PORT_CHECK=$(lsof -ti:$PORT 2>/dev/null)
+        if [ ! -z "$PORT_CHECK" ]; then
+            echo "   Attempt $attempt: Killing processes on port $PORT (PIDs: $PORT_CHECK)"
+            echo "$PORT_CHECK" | xargs kill -9 2>/dev/null
+        fi
+    done
+    sleep 0.5
+done
+
+# Method 3: Use fuser as backup (if available)
+if command -v fuser >/dev/null 2>&1; then
+    for PORT in 5000 5001 5002 5003; do
+        fuser -k $PORT/tcp 2>/dev/null && echo "   Killed port $PORT using fuser"
+    done
+    sleep 0.5
+fi
+
+# Method 4: Final aggressive cleanup specifically for port 5003
+for i in 1 2 3; do
+    PORT_CHECK=$(lsof -ti:5003 2>/dev/null)
     if [ ! -z "$PORT_CHECK" ]; then
-        echo "   Killing process on port $PORT (PIDs: $PORT_CHECK)"
+        echo "⚠️  Port 5003 still in use (attempt $i), killing PIDs: $PORT_CHECK"
         echo "$PORT_CHECK" | xargs kill -9 2>/dev/null
-        sleep 0.5
+        sleep 1
+    else
+        break
     fi
 done
 
-# Final verification that port 5003 is clear
+# Final verification
 if lsof -ti:5003 >/dev/null 2>&1; then
-    echo "⚠️  Port 5003 still in use, doing final cleanup..."
-    lsof -ti:5003 | xargs kill -9 2>/dev/null
-    sleep 2
+    echo "❌ ERROR: Port 5003 is STILL in use after cleanup attempts!"
+    echo "   Please manually kill the process:"
+    lsof -ti:5003 | xargs -I {} echo "   kill -9 {}"
+    echo "   Or check what's using it: lsof -i:5003"
+    exit 1
 fi
 
-echo "✅ Cleanup complete"
+echo "✅ Cleanup complete - port 5003 is free"
 
 echo ""
 

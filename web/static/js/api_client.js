@@ -69,6 +69,10 @@ export class ApiClient {
         return this.request('/api/force_dealer_hand', 'POST', payload);
     }
 
+    forcePlayerHand(payload) {
+        return this.request('/api/force_player_hand', 'POST', payload);
+    }
+
     requestInsurance(payload) {
         return this.request('/api/insurance', 'POST', payload);
     }
@@ -154,6 +158,15 @@ export class ApiClient {
 
         const query = buildQueryString({ game_id: gameId });
         return `/api/download_log_hand${query}`;
+    }
+
+    fetchLogHandContent(gameId) {
+        if (!gameId) {
+            return Promise.reject(new Error('Game ID required'));
+        }
+
+        const query = buildQueryString({ game_id: gameId });
+        return this.request(`/api/log_hand/contents${query}`, 'GET');
     }
 }
 

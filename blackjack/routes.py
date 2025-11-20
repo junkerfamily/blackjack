@@ -670,6 +670,40 @@ def clear_log_hand():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@blackjack_bp.route('/log_hand/contents', methods=['GET'])
+def view_log_hand():
+    """Retrieve the LogHand.log file content for viewing"""
+    try:
+        game_id = request.args.get('game_id')
+
+        if not game_id:
+            return jsonify({'success': False, 'error': 'Game ID required'}), 400
+
+        # Get the project root directory
+        current_file = os.path.abspath(__file__)
+        blackjack_dir = os.path.dirname(current_file)
+        project_root = os.path.dirname(blackjack_dir)
+
+        # If project root doesn't exist, try current working directory
+        if not os.path.exists(project_root):
+            project_root = os.getcwd()
+
+        # Construct log file path
+        log_path = os.path.join(project_root, 'LogHand.log')
+
+        if not os.path.exists(log_path):
+            return jsonify({'success': True, 'content': ''})  # Return empty if file doesn't exist
+
+        with open(log_path, 'r', encoding='utf-8') as log_file:
+            content = log_file.read()
+
+        return jsonify({'success': True, 'content': content})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @blackjack_bp.route('/force_dealer_hand', methods=['POST'])
 def force_dealer_hand():
     """Set or clear forced dealer hand for testing"""
@@ -683,6 +717,30 @@ def force_dealer_hand():
         
         game = get_game(game_id)
         result = game.set_force_dealer_hand(hand_string)
+        payload = {
+            'success': result.get('success', False),
+            'message': result.get('message', ''),
+            'game_state': game.get_game_state()
+        }
+        _save_game_to_redis(game)
+        return jsonify(payload)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@blackjack_bp.route('/force_player_hand', methods=['POST'])
+def force_player_hand():
+    """Set or clear forced player hand for testing"""
+    try:
+        data = request.get_json() or {}
+        game_id = data.get('game_id')
+        hand_string = data.get('hand_string')  # Format: "rank1,rank2" or None/empty
+        
+        if not game_id:
+            return jsonify({'success': False, 'error': 'Game ID required'}), 400
+        
+        game = get_game(game_id)
+        result = game.set_force_player_hand(hand_string)
         payload = {
             'success': result.get('success', False),
             'message': result.get('message', ''),

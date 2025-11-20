@@ -2,6 +2,7 @@
 Dealer class for Blackjack game
 """
 
+import sys
 from typing import List, Optional
 from blackjack.deck import Card, calculate_hand_value, is_blackjack, is_bust, is_soft_17
 
@@ -86,12 +87,50 @@ class Dealer:
         """
         self.reveal_hole_card()
         
+        iteration = 0
         while self.should_hit(hits_soft_17):
+            iteration += 1
+            current_value = self.get_value()
+            should_hit_result = self.should_hit(hits_soft_17)
+            
+            # Debug logging
+            print(f"🃏 Dealer play_hand iteration {iteration}: value={current_value}, should_hit={should_hit_result}", file=sys.stderr)
+            sys.stderr.flush()
+            
+            if not should_hit_result:
+                print(f"🛑 Dealer stopping: value={current_value} >= 17", file=sys.stderr)
+                sys.stderr.flush()
+                break
+            
             card = deck.deal_card()
             if card:
                 self.add_card(card)
+                new_value = self.get_value()
+                print(f"   Dealer drew {card}, new value={new_value}", file=sys.stderr)
+                sys.stderr.flush()
             else:
+                print(f"⚠️ Dealer stopped: deck is empty! Final value={self.get_value()}", file=sys.stderr)
+                sys.stderr.flush()
                 break  # No more cards
+        
+        final_value = self.get_value()
+        print(f"✅ Dealer finished: final_value={final_value}, cards={len(self.hand)}", file=sys.stderr)
+        sys.stderr.flush()
+        
+        # Safety check: dealer should never stop with value < 17 (unless deck is empty)
+        if final_value < 17 and len(deck) > 0:
+            print(f"❌ ERROR: Dealer stopped with value {final_value} but should have hit! Cards remaining: {len(deck)}", file=sys.stderr)
+            print(f"   Dealer hand: {[str(c) for c in self.hand]}", file=sys.stderr)
+            sys.stderr.flush()
+            # Force dealer to continue hitting
+            while self.should_hit(hits_soft_17) and len(deck) > 0:
+                card = deck.deal_card()
+                if card:
+                    self.add_card(card)
+                    print(f"   🔧 FIXED: Dealer drew {card}, new value={self.get_value()}", file=sys.stderr)
+                    sys.stderr.flush()
+                else:
+                    break
     
     def clear_hand(self):
         """Clear the dealer's hand"""

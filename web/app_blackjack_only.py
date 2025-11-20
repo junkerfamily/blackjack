@@ -71,19 +71,34 @@ def find_free_port(start_port=5000, max_attempts=10):
 if __name__ == '__main__':
     # Get port from environment variable (Render uses PORT, fallback to FLASK_PORT or 5000)
     port = int(os.environ.get('PORT', os.environ.get('FLASK_PORT', 5000)))
+    flask_port_explicitly_set = bool(os.environ.get('FLASK_PORT'))
     
-    # Check if port is available, if not find a free one (only for local dev)
-    if not os.environ.get('PORT'):  # PORT is set by Render, skip port checking in production
+    # Flask's reloader runs code in a child process. WERKZEUG_RUN_MAIN is set in the child.
+    # We only want to do port checking in the actual Flask process, not the reloader parent.
+    is_reloader_child = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
+    
+    # Only do port checking in the reloader child (actual Flask process), not the parent
+    # Skip port checking entirely in production (when PORT env var is set by Render)
+    if not os.environ.get('PORT') and is_reloader_child:
+        # Do a quick, non-blocking check - if port is busy, warn but let Flask try anyway
+        # Flask's reloader can cause false positives, so we're lenient here
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.bind(('', port))
         except OSError:
-            print(f"⚠️  Port {port} is already in use. Finding a free port...")
-            port = find_free_port(5000)
-            if port is None:
-                print("❌ Could not find a free port. Please free up a port or specify FLASK_PORT.")
-                exit(1)
-            print(f"✅ Using port {port} instead")
+            # Port appears busy, but Flask will handle the actual binding
+            # Don't exit - let Flask try and give its own error if it fails
+            if flask_port_explicitly_set:
+                print(f"⚠️  Note: Port {port} appears busy, but Flask will attempt to bind...")
+            else:
+                # No explicit port set, find a free one
+                print(f"⚠️  Port {port} is already in use. Finding a free port...")
+                port = find_free_port(5000)
+                if port is None:
+                    print("❌ Could not find a free port. Please free up a port or specify FLASK_PORT.")
+                    exit(1)
+                print(f"✅ Using port {port} instead")
     
     # Run in debug mode only if PORT is not set (local development)
     debug_mode = not bool(os.environ.get('PORT'))
@@ -104,7 +119,12 @@ if __name__ == '__main__':
     print(f"   📍 Dealer peek demo: http://localhost:{port}/dealer-peek-demo")
     print(f"   📍 Health check:     http://localhost:{port}/health")
     if debug_mode:
-        print(f"\n   Press Ctrl+C to stop the server\n")
+        print(f"\n   Press Ctrl+C to stop the server")
+        print(f"   ⚠️  Note: Flask debug mode may show reloader messages - actual port is {port}\n")
+    else:
+        print("")
     
+    # Explicitly print the port one more time right before starting
+    print(f"🚀 Starting Flask server on port {port}...")
     app.run(debug=debug_mode, host='0.0.0.0', port=port)
 
