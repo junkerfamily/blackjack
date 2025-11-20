@@ -74,12 +74,23 @@ class BlackjackGame:
         # Test mode: forced dealer hand (format: "rank1,rank2" e.g., "10,A" or "A,10")
         self.force_dealer_hand: Optional[str] = None
         self._pending_forced_dealer_cards: Optional[Tuple[Card, Card]] = None
+        # Test mode: forced player hand (format: "rank1,rank2" e.g., "A,A" or "10,10")
+        self.force_player_hand: Optional[str] = None
+        self._pending_forced_player_cards: Optional[Tuple[Card, Card]] = None
 
     # ------------------------------------------------------------
     # Round auditing helpers
     # ------------------------------------------------------------
     def _format_card(self, card: Card) -> str:
-        return f"{card.rank} of {card.suit}"
+        """Format card with Unicode suit symbols instead of words."""
+        suit_symbols = {
+            'hearts': '♥',
+            'diamonds': '♦',
+            'clubs': '♣',
+            'spades': '♠'
+        }
+        suit_symbol = suit_symbols.get(card.suit, card.suit)
+        return f"{card.rank}{suit_symbol}"
 
     def _snapshot_hand(self, hand: Hand) -> Dict[str, Any]:
         return {
@@ -334,6 +345,92 @@ class BlackjackGame:
             self._pending_forced_dealer_cards = None
             return False
     
+    def _force_player_hand(self) -> bool:
+        """
+        Force player to receive specific cards based on force_player_hand setting.
+        Format: "rank1,rank2" where rank1 is first card, rank2 is second card.
+        Example: "A,A" means two Aces (for splitting), "10,10" means two 10-value cards.
+        Note: "10" will match any 10-value card (10, J, Q, K).
+        
+        Returns:
+            True if forced successfully, False otherwise
+        """
+        if not self.force_player_hand or not self.force_player_hand.strip():
+            self._pending_forced_player_cards = None
+            return False
+        
+        try:
+            # Parse the forced hand (format: "rank1,rank2")
+            parts = [p.strip().upper() for p in self.force_player_hand.split(',')]
+            if len(parts) != 2:
+                import sys
+                print(f"⚠️ Invalid player hand format: {self.force_player_hand} (expected 'rank1,rank2')")
+                sys.stdout.flush()
+                return False
+            
+            card1_rank, card2_rank = parts
+            
+            # Normalize rank format (handle "10" vs "T", etc.)
+            rank_map = {'T': '10'}
+            card1_rank = rank_map.get(card1_rank, card1_rank)
+            card2_rank = rank_map.get(card2_rank, card2_rank)
+            
+            # Helper function to check if a card matches a rank
+            # If rank is "10", match any 10-value card (10, J, Q, K)
+            def card_matches_rank(card, rank):
+                if rank == '10':
+                    return card.is_ten_value()  # Matches 10, J, Q, K
+                else:
+                    return card.rank == rank
+            
+            # Find cards matching these ranks in the deck
+            card1 = None
+            card2 = None
+            
+            # Search deck for first card
+            for i, card in enumerate(self.deck.cards):
+                if card_matches_rank(card, card1_rank):
+                    card1 = self.deck.cards.pop(i)
+                    break
+            
+            # Search deck for second card (must be different card)
+            for i, card in enumerate(self.deck.cards):
+                if card_matches_rank(card, card2_rank):
+                    card2 = self.deck.cards.pop(i)
+                    break
+            
+            if not card1 or not card2:
+                # Couldn't find matching cards - reset and return False
+                import sys
+                print(f"⚠️ Could not find forced player cards: {card1_rank}, {card2_rank}")
+                print(f"   Found card1: {card1}, Found card2: {card2}")
+                print(f"   Deck has {len(self.deck.cards)} cards remaining")
+                sys.stdout.flush()
+                if card1:
+                    self.deck.cards.append(card1)
+                if card2:
+                    self.deck.cards.append(card2)
+                self._pending_forced_player_cards = None
+                return False
+            
+            # Store cards to be dealt to the player explicitly (we already removed them from deck)
+            self._pending_forced_player_cards = (card1, card2)
+            
+            import sys
+            print(f"🧪 TEST MODE: Forcing player hand - card1: {card1}, card2: {card2}")
+            sys.stdout.flush()
+            
+            return True
+            
+        except Exception as e:
+            import sys
+            import traceback
+            print(f"⚠️ Error forcing player hand: {e}")
+            traceback.print_exc()
+            sys.stdout.flush()
+            self._pending_forced_player_cards = None
+            return False
+    
     def _dealer_peek_and_check_blackjack(self) -> Dict[str, Any]:
         """
         Dealer peeks at hole card and checks for blackjack.
@@ -427,9 +524,18 @@ class BlackjackGame:
         if self.force_dealer_hand:
             self._force_dealer_hand()
         
+        # Prepare forced player hand if configured
+        if self.force_player_hand and not self._pending_forced_player_cards:
+            self._force_player_hand()
+        
         # Deal two cards to player
-        player_cards = self.deck.deal_cards(2)
-        current_hand.add_cards(player_cards)
+        if self._pending_forced_player_cards:
+            card1, card2 = self._pending_forced_player_cards
+            current_hand.add_cards([card1, card2])
+            self._pending_forced_player_cards = None
+        else:
+            player_cards = self.deck.deal_cards(2)
+            current_hand.add_cards(player_cards)
         
         # Deal two cards to dealer (hole card stays hidden)
         if self._pending_forced_dealer_cards:
@@ -977,6 +1083,7 @@ class BlackjackGame:
             'split_summary': getattr(self, 'split_summary', None),
             'dealer_peeked': self.dealer_peeked,
             'force_dealer_hand': self.force_dealer_hand,
+            'force_player_hand': self.force_player_hand,
             'has_completed_round': len(self.round_history) > 0,
             'latest_round_id': latest_round_id,
             'shuffle_animation': self.last_shuffle_event,
@@ -1035,6 +1142,45 @@ class BlackjackGame:
         # Clear any pending forced cards; they will be regenerated on next deal
         self._pending_forced_dealer_cards = None
         return {'success': True, 'message': 'Force dealer hand updated'}
+
+    def set_force_player_hand(self, hand_string: Optional[str]) -> Dict[str, Any]:
+        """
+        Set or clear the forced player hand for testing.
+        
+        Args:
+            hand_string: Format "rank1,rank2" (e.g., "A,A" or "10,10") or None/empty to disable
+            
+        Returns:
+            Dict with success status
+        """
+        if hand_string and hand_string.strip():
+            # Validate format
+            parts = [p.strip().upper() for p in hand_string.split(',')]
+            if len(parts) != 2:
+                return {'success': False, 'message': 'Invalid format. Use "rank1,rank2" (e.g., "A,A")'}
+            
+            # Validate ranks
+            valid_ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
+            rank_map = {'T': '10'}
+            parts = [rank_map.get(p, p) for p in parts]
+            
+            if parts[0] not in valid_ranks or parts[1] not in valid_ranks:
+                return {'success': False, 'message': 'Invalid rank. Use A, 2-10, J, Q, K'}
+            
+            self.force_player_hand = hand_string.strip()
+            import sys
+            print(f"🧪 TEST MODE: Force player hand set to: {self.force_player_hand}")
+            sys.stdout.flush()
+        else:
+            self.force_player_hand = None
+            import sys
+            print("🧪 TEST MODE: Force player hand disabled")
+            sys.stdout.flush()
+        
+        # Clear any pending forced cards; they will be regenerated on next deal
+        self._pending_forced_player_cards = None
+        
+        return {'success': True, 'message': f'Force player hand {"set" if self.force_player_hand else "disabled"}'}
 
     def insurance_decision(self, decision: str) -> Dict[str, Any]:
         """Handle insurance/even-money decisions."""
@@ -1968,6 +2114,7 @@ class BlackjackGame:
             'last_shuffle_event': self.last_shuffle_event,
             'dealer_peeked': self.dealer_peeked,
             'force_dealer_hand': self.force_dealer_hand,
+            'force_player_hand': self.force_player_hand,
             'pending_forced_dealer_cards': pending_forced,
             'split_summary': getattr(self, 'split_summary', None)
         }

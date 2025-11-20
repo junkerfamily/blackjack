@@ -57,6 +57,17 @@ class Card:
             'value': self._value
         }
     
+    def __str__(self) -> str:
+        """String representation with Unicode suit symbols."""
+        suit_symbols = {
+            'hearts': '♥',
+            'diamonds': '♦',
+            'clubs': '♣',
+            'spades': '♠'
+        }
+        suit_symbol = suit_symbols.get(self.suit, self.suit)
+        return f"{self.rank}{suit_symbol}"
+    
     def __repr__(self) -> str:
         return f"Card({self.suit}, {self.rank})"
     
