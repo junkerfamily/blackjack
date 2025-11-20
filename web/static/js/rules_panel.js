@@ -10,12 +10,12 @@ export const rulesPanel = {
     init() {
         const infoToggle = document.getElementById('info-toggle');
         const rulesCloseBtn = document.getElementById('rules-close');
-        const rulesNextBtn = document.getElementById('rules-next-btn');
-        const rulesPrevBtn = document.getElementById('rules-prev-btn');
-        const rulesCasinoInfoBtn = document.getElementById('rules-casino-info-btn');
-        const rulesBackBtn = document.getElementById('rules-back-btn');
-        const rulesShortcutsBtn = document.getElementById('rules-shortcuts-btn');
-        const rulesShortcutsBackBtn = document.getElementById('rules-shortcuts-back-btn');
+        
+        // Sidebar navigation buttons
+        const navBasic = document.getElementById('rules-nav-basic');
+        const navAdvanced = document.getElementById('rules-nav-advanced');
+        const navShortcuts = document.getElementById('rules-nav-shortcuts');
+        const navCasino = document.getElementById('rules-nav-casino');
         
         if (infoToggle) {
             infoToggle.addEventListener('click', () => this.toggle());
@@ -25,28 +25,21 @@ export const rulesPanel = {
             rulesCloseBtn.addEventListener('click', () => this.close());
         }
         
-        if (rulesNextBtn) {
-            rulesNextBtn.addEventListener('click', () => this.showPage('advanced'));
+        // Sidebar navigation
+        if (navBasic) {
+            navBasic.addEventListener('click', () => this.showPage('basic'));
         }
         
-        if (rulesPrevBtn) {
-            rulesPrevBtn.addEventListener('click', () => this.showPage('basic'));
+        if (navAdvanced) {
+            navAdvanced.addEventListener('click', () => this.showPage('advanced'));
         }
         
-        if (rulesCasinoInfoBtn) {
-            rulesCasinoInfoBtn.addEventListener('click', () => this.showPage('casino'));
+        if (navShortcuts) {
+            navShortcuts.addEventListener('click', () => this.showPage('shortcuts'));
         }
         
-        if (rulesBackBtn) {
-            rulesBackBtn.addEventListener('click', () => this.showPage('advanced'));
-        }
-        
-        if (rulesShortcutsBtn) {
-            rulesShortcutsBtn.addEventListener('click', () => this.showPage('shortcuts'));
-        }
-        
-        if (rulesShortcutsBackBtn) {
-            rulesShortcutsBackBtn.addEventListener('click', () => this.showPage('basic'));
+        if (navCasino) {
+            navCasino.addEventListener('click', () => this.showPage('casino'));
         }
         
         // Close rules panel when clicking outside
@@ -84,6 +77,9 @@ export const rulesPanel = {
             rulesPanelEl.setAttribute('aria-hidden', 'false');
             this.isOpen = true;
             
+            // Ensure current page is shown and sidebar button is active
+            this.showPage(this.currentPage);
+            
             // Close settings panel if open
             if (settingsPanelEl && settingsPanelEl.classList.contains('open')) {
                 settingsPanelEl.classList.remove('open');
@@ -108,29 +104,39 @@ export const rulesPanel = {
         const casinoPageEl = document.getElementById('rules-page-casino');
         const shortcutsPageEl = document.getElementById('rules-page-shortcuts');
         
+        // Update sidebar button states
+        const navBasic = document.getElementById('rules-nav-basic');
+        const navAdvanced = document.getElementById('rules-nav-advanced');
+        const navShortcuts = document.getElementById('rules-nav-shortcuts');
+        const navCasino = document.getElementById('rules-nav-casino');
+        
+        // Remove active class from all buttons
+        [navBasic, navAdvanced, navShortcuts, navCasino].forEach(btn => {
+            if (btn) btn.classList.remove('active');
+        });
+        
+        // Hide all pages
+        if (basicPageEl) basicPageEl.style.display = 'none';
+        if (advancedPageEl) advancedPageEl.style.display = 'none';
+        if (casinoPageEl) casinoPageEl.style.display = 'none';
+        if (shortcutsPageEl) shortcutsPageEl.style.display = 'none';
+        
+        // Show selected page and activate corresponding button
         if (page === 'basic') {
             if (basicPageEl) basicPageEl.style.display = 'block';
-            if (advancedPageEl) advancedPageEl.style.display = 'none';
-            if (casinoPageEl) casinoPageEl.style.display = 'none';
-            if (shortcutsPageEl) shortcutsPageEl.style.display = 'none';
+            if (navBasic) navBasic.classList.add('active');
             this.currentPage = 'basic';
         } else if (page === 'advanced') {
-            if (basicPageEl) basicPageEl.style.display = 'none';
             if (advancedPageEl) advancedPageEl.style.display = 'block';
-            if (casinoPageEl) casinoPageEl.style.display = 'none';
-            if (shortcutsPageEl) shortcutsPageEl.style.display = 'none';
+            if (navAdvanced) navAdvanced.classList.add('active');
             this.currentPage = 'advanced';
         } else if (page === 'casino') {
-            if (basicPageEl) basicPageEl.style.display = 'none';
-            if (advancedPageEl) advancedPageEl.style.display = 'none';
             if (casinoPageEl) casinoPageEl.style.display = 'block';
-            if (shortcutsPageEl) shortcutsPageEl.style.display = 'none';
+            if (navCasino) navCasino.classList.add('active');
             this.currentPage = 'casino';
         } else if (page === 'shortcuts') {
-            if (basicPageEl) basicPageEl.style.display = 'none';
-            if (advancedPageEl) advancedPageEl.style.display = 'none';
-            if (casinoPageEl) casinoPageEl.style.display = 'none';
             if (shortcutsPageEl) shortcutsPageEl.style.display = 'block';
+            if (navShortcuts) navShortcuts.classList.add('active');
             this.currentPage = 'shortcuts';
         }
     }

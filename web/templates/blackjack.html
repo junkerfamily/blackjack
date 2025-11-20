@@ -44,7 +44,14 @@
                 <span class="rules-title" id="rules-title">How to Play</span>
                 <button class="rules-close" id="rules-close" aria-label="Close rules">✕</button>
             </div>
-            <div class="rules-content">
+            <div class="rules-layout">
+                <div class="rules-sidebar">
+                    <button class="rules-nav-btn active" data-page="basic" id="rules-nav-basic">Basic Rules</button>
+                    <button class="rules-nav-btn" data-page="advanced" id="rules-nav-advanced">Advanced Rules</button>
+                    <button class="rules-nav-btn" data-page="shortcuts" id="rules-nav-shortcuts">Shortcuts</button>
+                    <button class="rules-nav-btn" data-page="casino" id="rules-nav-casino">Casino Info</button>
+                </div>
+                <div class="rules-content">
                 <!-- Basic Rules Page -->
                 <div class="rules-page" id="rules-page-basic">
                     <h3>Basic Rules</h3>
@@ -57,10 +64,6 @@
                         <li><strong>Hit:</strong> Take another card.</li>
                         <li><strong>Stand:</strong> Keep your current hand and let dealer play.</li>
                     </ul>
-                    <div class="rules-navigation">
-                        <button class="rules-next-btn" id="rules-next-btn">Advanced Rules →</button>
-                        <button class="rules-next-btn" id="rules-shortcuts-btn">Keyboard Shortcuts →</button>
-                    </div>
                 </div>
 
                 <!-- Advanced Rules Page -->
@@ -80,10 +83,6 @@
                         <li><strong>5 Card Charlie:</strong> If you get 5 cards without busting, you automatically win that hand!</li>
                         <li><strong>Shoe & Cut Card Display:</strong> The shoe graphic shows remaining cards in the 6-deck shoe. When it drops below 156 cards (50%), a reshuffle warning appears. The deck automatically reshuffles before the next deal when it reaches the cut card threshold.</li>
                     </ul>
-                    <div class="rules-navigation">
-                        <button class="rules-prev-btn" id="rules-prev-btn">← Basic Rules</button>
-                        <button class="rules-next-btn" id="rules-casino-info-btn">Casino Information →</button>
-                    </div>
                 </div>
 
                 <!-- Keyboard Shortcuts Page -->
@@ -98,9 +97,6 @@
                         <li><strong>1:</strong> Place $100 Bet</li>
                         <li><strong>5:</strong> Place $500 Bet</li>
                     </ul>
-                    <div class="rules-navigation">
-                        <button class="rules-prev-btn" id="rules-shortcuts-back-btn">← Basic Rules</button>
-                    </div>
                 </div>
 
                 <!-- Casino Information Page -->
@@ -145,6 +141,7 @@
                     <div class="rules-navigation">
                         <button class="rules-prev-btn" id="rules-back-btn">← Advanced Rules</button>
                     </div>
+                </div>
                 </div>
             </div>
         </div>

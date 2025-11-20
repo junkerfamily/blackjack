@@ -349,10 +349,10 @@ body {
 .rules-panel {
     position: absolute;
     top: 58px;
-    right: 100px;
-    width: 320px;
-    max-height: 70vh;
-    padding: 18px;
+    right: 24px;
+    width: 640px;
+    max-height: 85vh;
+    padding: 0;
     background: rgba(10, 10, 10, 0.95);
     border: 1px solid rgba(255, 215, 0, 0.35);
     border-radius: 12px;
@@ -360,18 +360,64 @@ body {
     backdrop-filter: blur(4px);
     display: none;
     z-index: 25;
-    overflow-y: auto;
+    overflow: hidden;
 }
 
 .rules-panel.open {
-    display: block;
+    display: flex;
+    flex-direction: column;
 }
 
 .rules-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 14px;
+    padding: 18px;
+    border-bottom: 1px solid rgba(255, 215, 0, 0.2);
+}
+
+.rules-layout {
+    display: flex;
+    flex-direction: row;
+    height: calc(85vh - 60px);
+    overflow: hidden;
+}
+
+.rules-sidebar {
+    width: 180px;
+    background: rgba(0, 0, 0, 0.4);
+    border-right: 1px solid rgba(255, 215, 0, 0.2);
+    padding: 12px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+}
+
+.rules-nav-btn {
+    background: transparent;
+    border: none;
+    border-left: 3px solid transparent;
+    color: var(--text-light);
+    font-size: 0.95em;
+    font-weight: 500;
+    padding: 12px 18px;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+}
+
+.rules-nav-btn:hover {
+    background: rgba(255, 215, 0, 0.1);
+    color: var(--gold);
+}
+
+.rules-nav-btn.active {
+    background: rgba(255, 215, 0, 0.15);
+    border-left-color: var(--gold);
+    color: var(--gold);
+    font-weight: 600;
 }
 
 .rules-title {
@@ -391,9 +437,12 @@ body {
 }
 
 .rules-content {
+    flex: 1;
     display: flex;
     flex-direction: column;
     gap: 0;
+    padding: 18px;
+    overflow-y: auto;
 }
 
 .rules-page {
@@ -410,10 +459,10 @@ body {
 }
 
 .rules-page h3 {
-    font-size: 1em;
+    font-size: 1.2em;
     font-weight: bold;
     color: var(--gold);
-    margin-bottom: 12px;
+    margin-bottom: 16px;
 }
 
 .rules-page ul {
@@ -426,9 +475,10 @@ body {
 }
 
 .rules-page li {
-    font-size: 0.9em;
+    font-size: 1em;
     color: var(--text-light);
-    line-height: 1.4;
+    line-height: 1.6;
+    margin-bottom: 8px;
 }
 
 .rules-page li strong {
@@ -534,13 +584,7 @@ body {
 }
 
 .rules-navigation {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    margin-top: 16px;
-    padding-top: 12px;
-    border-top: 1px solid rgba(255, 215, 0, 0.2);
+    display: none; /* Hide old navigation buttons - sidebar handles navigation now */
 }
 
 .rules-next-btn,
