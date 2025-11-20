@@ -376,8 +376,21 @@ export class UIController {
         const statusTextEl = document.getElementById('auto-status-text');
         const downloadBtn = document.getElementById('auto-download-log-btn');
         const viewBtn = document.getElementById('auto-view-log-btn');
+        const closeBtn = document.getElementById('auto-status-close-btn');
 
         if (!statusEl) return;
+
+        // Set up close button handler (only need to do this once)
+        if (closeBtn && !closeBtn.hasAttribute('data-handler-attached')) {
+            closeBtn.setAttribute('data-handler-attached', 'true');
+            closeBtn.addEventListener('click', () => {
+                statusEl.style.display = 'none';
+                // Clear the auto_mode status so it doesn't reappear on next update
+                if (game.gameState && game.gameState.auto_mode) {
+                    game.gameState.auto_mode.status = null;
+                }
+            });
+        }
 
         const autoMode = game.gameState?.auto_mode;
         if (autoMode?.status) {
