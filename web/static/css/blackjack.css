@@ -331,7 +331,7 @@ body {
     position: absolute;
     top: 58px;
     right: 24px;
-    width: 380px;
+    width: 760px;
     padding: 18px;
     background: rgba(10, 10, 10, 0.95);
     border: 1px solid rgba(255, 215, 0, 0.35);
@@ -590,6 +590,36 @@ body {
     display: flex;
     flex-direction: column;
     gap: 14px;
+}
+
+.settings-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    align-items: start;
+}
+
+.settings-column {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.settings-section-title {
+    font-size: 0.9em;
+    color: var(--gold);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 0 0 4px 0;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 215, 0, 0.2);
 }
 
 .settings-row {
@@ -1427,6 +1457,16 @@ button:disabled {
     .secondary-column {
         min-width: auto;
         gap: 14px;
+    }
+
+    .settings-columns {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .settings-panel {
+        width: calc(100% - 48px);
+        max-width: 380px;
     }
 }
 
