@@ -5,12 +5,14 @@
  * It imports the module classes and sets up the BlackjackGame instance.
  */
 
-import { BlackjackGame, rulesPanel } from './blackjack.js';
+import { BlackjackGame } from './blackjack.js';
+import { rulesPanel } from './rules_panel.js';
 import { ApiClient } from './api_client.js';
 import { GameStateManager } from './game_state.js';
 import { UIController } from './ui_controller.js';
 import { SettingsManager } from './settings_manager.js';
 import { AutoModeManager } from './auto_mode_manager.js';
+import { HecklerManager } from './heckler_manager.js';
 
 /**
  * Initialize the game when the DOM is ready
@@ -25,7 +27,8 @@ function initializeGame() {
 
     const stateManager = new GameStateManager({
         defaultBankrollAmount: 1000,
-        defaultDealerHitDelayMs: 1000
+        defaultDealerHitDelayMs: 1000,
+        defaultPlayerHitDelayMs: 150
     });
 
     // Create the main game instance with module dependencies
@@ -38,13 +41,15 @@ function initializeGame() {
     game.ui = new UIController(game);
     game.settingsManager = new SettingsManager(game);
     game.autoManager = new AutoModeManager(game);
+    game.hecklerManager = new HecklerManager(game);
+
     if (typeof game.autoManager?.init === 'function') {
         game.autoManager.init();
     }
 
     // Setup heckler voices if speech synthesis is available
-    if (game.useSpeechSynthesis) {
-        game.settingsManager.setupHecklerVoices();
+    if (game.hecklerManager.useSpeechSynthesis) {
+        game.hecklerManager.setupHecklerVoices();
     }
 
     // Update API client's message handler to use UI
@@ -107,15 +112,26 @@ function initializeGame() {
         }
     };
 
-    // Initialize the game
-    game.init();
+    // Initialize the game (async, but don't block on it)
+    game.init().catch((error) => {
+        console.error('Game initialization error:', error);
+        // Ensure buttons are enabled even if init fails
+        if (game.ui) {
+            game.ui.hideLoading();
+        }
+        // Also ensure loading overlay is hidden
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (loadingOverlay) {
+            loadingOverlay.style.display = 'none';
+        }
+    });
 
     // Initialize the rules panel UI
     rulesPanel.init();
 
     // Greet the player (wait for voices to be ready if needed)
     const greetPlayer = () => {
-        if (!game.voiceEnabled) {
+        if (!game.hecklerManager.voiceEnabled) {
             return;
         }
 
@@ -123,17 +139,17 @@ function initializeGame() {
             game.ui.showMessage('Are you feeling lucky today?');
         }
 
-        if (!game.useSpeechSynthesis || typeof window === 'undefined' || !window.speechSynthesis) {
+        if (!game.hecklerManager.useSpeechSynthesis || typeof window === 'undefined' || !window.speechSynthesis) {
             return;
         }
 
         const synth = window.speechSynthesis;
 
         const trySpeakGreeting = () => {
-            if (!game.hecklerVoice) {
+            if (!game.hecklerManager.hecklerVoice) {
                 return false;
             }
-            game.previewHecklerVoice(true);
+            game.hecklerManager.previewVoice(true);
             return true;
         };
 
@@ -170,4 +186,3 @@ if (document.readyState === 'loading') {
     // DOM is already ready
     initializeGame();
 }
-

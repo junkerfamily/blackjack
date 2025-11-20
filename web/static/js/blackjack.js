@@ -2,13 +2,14 @@ import { ApiClient } from './api_client.js';
 import { GameStateManager } from './game_state.js';
 import { UIController } from './ui_controller.js';
 import { SettingsManager } from './settings_manager.js';
+import { CardManager } from './card.js';
 
 /**
  * Blackjack Game UI Logic
  * Handles game state, API calls, and UI updates
  */
 
-class BlackjackGame {
+export class BlackjackGame {
     constructor(options = {}) {
         this.gameId = null;
         this.currentBet = 0;
@@ -44,10 +45,6 @@ class BlackjackGame {
         this.hecklerElement = null;
         this.hecklerTimeout = null;
         this.hecklerRemoveTimeout = null;
-        this.hecklerVoice = null;
-        this.currentHecklerUtterance = null;
-        this.hecklerVoicesListener = null;
-        this.hecklerSpeechRate = 1.05;
         this.activeHecklerToken = null;
         this.settingsToggle = null;
         this.settingsPanel = null;
@@ -61,51 +58,14 @@ class BlackjackGame {
         this.forceDlrHandInput = null;
         this.testPeekButton = null;
         this.peekAnimationDurationMs = 1350;
-        this.boundOutsideClickHandler = null;
-        this.boundEscapeHandler = null;
-        this.hecklerSettingsKey = 'blackjack_heckler_settings';
-        this.hecklerPreferences = this.loadHecklerPreferences();
-        this.pendingPreferredVoiceId = this.hecklerPreferences?.voiceId || null;
-        if (this.hecklerPreferences === null || this.hecklerPreferences.enabled === undefined) {
-            this.voiceEnabled = true;
-        } else {
-            this.voiceEnabled = this.hecklerPreferences.enabled === true;
-        }
+        
         // Auto mode settings
         this.autoSettings = this.stateManager.loadAutoSettings();
         // Dedupe key for insurance outcome history entries per round
         this.lastInsuranceOutcomeSig = null;
         this.insuranceAnnouncedForGameId = null;
         this.loggedRoundId = null; // Track which round has been logged
-        if (this.hecklerPreferences?.rate && !Number.isNaN(parseFloat(this.hecklerPreferences.rate))) {
-            this.hecklerSpeechRate = parseFloat(this.hecklerPreferences.rate);
-        }
-        this.hecklerPhrases = {
-            hard17: [
-                'You hit on a hard {total}? Did you lose a bet to common sense?',
-                'Hard {total} and you still begged for more pain?',
-                'A hard {total} hit? The dealer just sent you a thank-you card.'
-            ],
-            dealerBustCard: [
-                'Dealer shows a {dealerCard} and you still swing? Bold move, champ.',
-                'That {dealerCard} was begging you to stand. You tipped the house instead.',
-                'Every pit boss nodded when you hit against a {dealerCard}. Not in approval.'
-            ],
-            softHigh: [
-                'Soft {total} was already pretty. Why the makeover?',
-                'You had a soft {total} and still hit? Even the cocktail waitress winced.',
-                'Soft {total} and you asked for more? That cloud above you is pure judgement.'
-            ],
-            standLow: [
-                'Standing on {total}? You know you can\'t win with that, right?',
-                '{total} and you\'re done? The dealer just smiled.',
-                'Standing on {total}? That\'s not how math works, champ.',
-                'You stood on {total}? Even the shoe is laughing.',
-                '{total} and you fold? Might as well hand over your wallet now.',
-                'Standing on {total}? The house edge just got a promotion.'
-            ]
-        };
-        this.useSpeechSynthesis = typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
+        
         // UI, SettingsManager, APIClient, and AutoManager are initialized by main.js
         // Don't create them here to avoid circular dependencies
         this.ui = null;
@@ -114,6 +74,7 @@ class BlackjackGame {
             onMessage: () => {} // Will be updated in main.js when UI is ready
         });
         this.autoManager = null;
+        this.hecklerManager = null; // Will be set by main.js
         // Don't call init() here - it's async and will be called separately
     }
 
@@ -151,65 +112,6 @@ class BlackjackGame {
                 break;
             default:
                 console.log(`${prefix} ℹ️ ${message}`);
-        }
-    }
-
-    /**
-     * Pick a random heckler line for a given category
-     */
-    pickRandomMessage(category) {
-        const messages = this.hecklerPhrases?.[category];
-        if (!messages || !messages.length) {
-            return null;
-        }
-        const index = Math.floor(Math.random() * messages.length);
-        return messages[index];
-    }
-
-    /**
-     * Replace template placeholders in heckler lines
-     */
-    formatHecklerMessage(template, context = {}) {
-        if (!template) return null;
-        return template.replace(/\{(\w+)\}/g, (_, key) => {
-            return Object.prototype.hasOwnProperty.call(context, key) ? context[key] : '';
-        });
-    }
-
-    /**
-     * Load speech preferences from localStorage
-     */
-    loadHecklerPreferences() {
-        if (typeof window === 'undefined' || !window.localStorage) return null;
-        try {
-            const stored = window.localStorage.getItem(this.hecklerSettingsKey);
-            if (!stored) return null;
-            const parsed = JSON.parse(stored);
-            return {
-                voiceId: parsed?.voiceId || null,
-                rate: parsed?.rate || null,
-                enabled: typeof parsed?.enabled === 'boolean' ? parsed.enabled : undefined
-            };
-        } catch (error) {
-            console.warn('Failed to load heckler preferences:', error);
-            return null;
-        }
-    }
-
-    /**
-     * Persist speech preferences
-     */
-    saveHecklerPreferences() {
-        if (typeof window === 'undefined' || !window.localStorage) return;
-        try {
-            const payload = {
-                voiceId: this.pendingPreferredVoiceId || null,
-                rate: this.hecklerSpeechRate,
-                enabled: this.voiceEnabled
-            };
-            window.localStorage.setItem(this.hecklerSettingsKey, JSON.stringify(payload));
-        } catch (error) {
-            console.warn('Failed to save heckler preferences:', error);
         }
     }
 
@@ -309,170 +211,120 @@ class BlackjackGame {
     }
 
     /**
-     * Generate a stable identifier for a voice
+     * Helper to set default bet on right click
      */
-    getVoiceIdentifier(voice) {
-        if (!voice) return null;
-        return voice.voiceURI || `${voice.name}|${voice.lang}`;
-    }
-
-    /**
-     * Populate dropdown with available voices
-     */
-    populateVoiceOptions(voices) {
-        if (!this.hecklerVoiceSelect) return;
-        if (!Array.isArray(voices)) {
-            this.hecklerVoiceSelect.innerHTML = '';
-            this.hecklerVoiceSelect.disabled = true;
-            const option = document.createElement('option');
-            option.value = '';
-            option.textContent = 'No voices available';
-            this.hecklerVoiceSelect.appendChild(option);
-            return;
-        }
-
-        const filteredVoices = voices.filter((voice) => {
-            const lang = voice.lang || '';
-            return typeof lang === 'string' && lang.toLowerCase().startsWith('en-us');
-        });
-
-        this.hecklerVoiceSelect.innerHTML = '';
-        if (filteredVoices.length === 0) {
-            const option = document.createElement('option');
-            option.value = '';
-            option.textContent = 'No US English voices';
-            this.hecklerVoiceSelect.appendChild(option);
-            this.hecklerVoiceSelect.disabled = true;
-            this.hecklerVoice = null;
-            this.pendingPreferredVoiceId = null;
-            return;
-        }
-
-        const optionsFragment = document.createDocumentFragment();
-        filteredVoices.forEach((voice) => {
-            const option = document.createElement('option');
-            const identifier = this.getVoiceIdentifier(voice);
-            option.value = identifier;
-            let label = `${voice.name}`;
-            if (voice.lang) {
-                label += ` (${voice.lang})`;
-            }
-            if (voice.default) {
-                label += ' • default';
-            }
-            option.textContent = label;
-            if (this.hecklerVoice && identifier === this.getVoiceIdentifier(this.hecklerVoice)) {
-                option.selected = true;
-            } else if (!this.hecklerVoice && this.pendingPreferredVoiceId && identifier === this.pendingPreferredVoiceId) {
-                option.selected = true;
-            }
-            optionsFragment.appendChild(option);
-        });
-
-        this.hecklerVoiceSelect.appendChild(optionsFragment);
-        this.hecklerVoiceSelect.disabled = false;
-
-        const selectedOption = this.hecklerVoiceSelect.options[this.hecklerVoiceSelect.selectedIndex];
-        if (selectedOption) {
-            const selectedVoice = filteredVoices.find((voice) => this.getVoiceIdentifier(voice) === selectedOption.value);
-            if (selectedVoice) {
-                this.hecklerVoice = selectedVoice;
-                this.pendingPreferredVoiceId = selectedOption.value;
-                this.saveHecklerPreferences();
-                if (this.voiceEnabled) {
-                    this.previewHecklerVoice();
-                }
-            }
+    setDefaultBet(value) {
+        this.defaultBetAmount = value;
+        this.stateManager.saveDefaultBet(value);
+        this.log(`Default bet set to $${value}`, 'success');
+        
+        // Update UI to show change
+        this.updateDefaultBetDisplay();
+        
+        // Also select this chip for current bet if we haven't bet yet
+        if (this.currentBet === 0) {
+            this.selectChip(value);
         }
     }
-
-    /**
-     * Assign the preferred voice from saved preferences
-     */
-    assignPreferredVoice(voices) {
-        if (!voices || !Array.isArray(voices) || voices.length === 0) {
-            return;
-        }
-
-        // If we already have a voice assigned, keep it if it's still available
-        if (this.hecklerVoice) {
-            const currentIdentifier = this.getVoiceIdentifier(this.hecklerVoice);
-            const stillAvailable = voices.find((voice) => this.getVoiceIdentifier(voice) === currentIdentifier);
-            if (stillAvailable) {
-                return; // Voice is still available, no need to reassign
-            }
-        }
-
-        // Try to find the preferred voice from saved preferences
-        const preferredId = this.pendingPreferredVoiceId || this.hecklerPreferences?.voiceId;
-        if (preferredId) {
-            const preferredVoice = voices.find((voice) => this.getVoiceIdentifier(voice) === preferredId);
-            if (preferredVoice) {
-                this.hecklerVoice = preferredVoice;
-                this.pendingPreferredVoiceId = preferredId;
-                return;
-            }
-        }
-
-        // Fallback to default US English voice or first available US English voice
-        const filteredVoices = voices.filter((voice) => {
-            const lang = voice.lang || '';
-            return typeof lang === 'string' && lang.toLowerCase().startsWith('en-us');
-        });
-
-        if (filteredVoices.length > 0) {
-            // Try to find a default voice first
-            const defaultVoice = filteredVoices.find((voice) => voice.default);
-            if (defaultVoice) {
-                this.hecklerVoice = defaultVoice;
-                this.pendingPreferredVoiceId = this.getVoiceIdentifier(defaultVoice);
+    
+    updateDefaultBetDisplay() {
+        document.querySelectorAll('.chip').forEach(chip => {
+            const val = parseInt(chip.dataset.value);
+            if (val === this.defaultBetAmount) {
+                chip.classList.add('default-bet');
+                chip.title = 'Default Bet (Right-click to change)';
             } else {
-                // Use first available US English voice
-                this.hecklerVoice = filteredVoices[0];
-                this.pendingPreferredVoiceId = this.getVoiceIdentifier(filteredVoices[0]);
+                chip.classList.remove('default-bet');
+                chip.title = 'Right-click to set as default';
             }
-        }
+        });
     }
 
     /**
-     * Refresh voice list in the settings panel
+     * Add game result to history list
      */
-    refreshVoiceOptions() {
-        if (!this.useSpeechSynthesis || typeof window === 'undefined' || !window.speechSynthesis) {
-            return;
+    addGameHistory(result, amount, netChange) {
+        const historyItem = {
+            result: result, // 'win', 'loss', 'push', 'blackjack'
+            amount: amount,
+            netChange: netChange,
+            timestamp: Date.now(),
+            displayResult: result.charAt(0).toUpperCase() + result.slice(1),
+            amountDisplay: netChange > 0 ? `+$${netChange}` : (netChange < 0 ? `-$${Math.abs(netChange)}` : '$0')
+        };
+        
+        this.gameHistory.unshift(historyItem);
+        
+        // Keep only last 5
+        if (this.gameHistory.length > 5) {
+            this.gameHistory.pop();
         }
-        const voices = window.speechSynthesis.getVoices();
-        if (voices && voices.length) {
-            this.populateVoiceOptions(voices);
-            this.assignPreferredVoice(voices);
-        }
+        
+        this.ui.updateHistoryDisplay();
     }
 
+    addInsuranceHistory(won, amount) {
+        // Add a specialized history item for insurance
+        const historyItem = {
+            result: won ? 'insurance_win' : 'insurance_loss',
+            amount: amount,
+            netChange: won ? amount : -amount,
+            timestamp: Date.now(),
+            displayResult: won ? 'Ins. Win' : 'Ins. Loss',
+            amountDisplay: won ? `+$${amount}` : `-$${amount}`
+        };
+        
+        this.gameHistory.unshift(historyItem);
+        if (this.gameHistory.length > 5) {
+            this.gameHistory.pop();
+        }
+        
+        this.ui.updateHistoryDisplay();
+    }
+
+    /**
+     * Clear all hands visually
+     */
+    clearHands() {
+        if (this.playerHandManager) this.playerHandManager.clear();
+        if (this.dealerHandManager) this.dealerHandManager.clear();
+    }
+    
     /**
      * Initialize settings panel (delegates to settingsManager)
      */
     initSettingsPanel() {
-        this.settingsManager.initSettingsPanel();
+        if (this.settingsManager) {
+            this.settingsManager.initSettingsPanel();
+        }
     }
 
-
     /**
-     * Heckler voice methods (delegated to settingsManager)
+     * Heckler voice methods (delegated to hecklerManager)
      */
     previewHecklerVoice(force = false) {
-        this.settingsManager.previewHecklerVoice(force);
+        if (this.hecklerManager) {
+            this.hecklerManager.previewVoice(force);
+        }
     }
 
     playVoiceTest() {
-        this.settingsManager.playVoiceTest();
+        if (this.hecklerManager) {
+            this.hecklerManager.playVoiceTest();
+        }
     }
 
     speakHecklerLine(message, token) {
-        return this.settingsManager.speakHecklerLine(message, token);
+        if (this.hecklerManager) {
+            return this.hecklerManager.speak(message, token);
+        }
+        return false;
     }
 
     stopHecklerSpeech() {
-        this.settingsManager.stopHecklerSpeech();
+        if (this.hecklerManager) {
+            this.hecklerManager.stop();
+        }
     }
 
     /**
@@ -497,42 +349,28 @@ class BlackjackGame {
         const rank = card.rank;
         if (rank === 'A') return 11;
         if (['K', 'Q', 'J', '10'].includes(rank)) return 10;
-        const parsed = parseInt(rank, 10);
-        return Number.isNaN(parsed) ? null : parsed;
+        return parseInt(rank, 10) || null;
     }
 
     /**
-     * Friendly label for a card rank
+     * Create a short label for a card (e.g., "Ace", "10", "7")
      */
     formatCardLabel(card) {
         if (!card || !card.rank) return '';
-        const rank = card.rank;
-        switch (rank) {
-            case 'A':
-                return 'Ace';
-            case 'K':
-                return 'King';
-            case 'Q':
-                return 'Queen';
-            case 'J':
-                return 'Jack';
-            default:
-                return rank;
-        }
+        if (card.rank === 'A') return 'Ace';
+        if (['K', 'Q', 'J'].includes(card.rank)) return 'Face card';
+        return card.rank;
     }
 
     /**
-     * Determine if a hand is soft (contains an Ace counted as 11)
+     * Check if a hand is "soft" (contains an Ace counted as 11)
+     * This is a simplified client-side check for heckler logic
      */
     isSoftHand(hand) {
-        const cards = hand?.cards;
-        if (!Array.isArray(cards) || !cards.length) {
-            return false;
-        }
+        if (!hand || !hand.cards) return false;
         let total = 0;
         let aces = 0;
-        cards.forEach(card => {
-            if (!card || !card.rank) return;
+        hand.cards.forEach(card => {
             if (card.rank === 'A') {
                 total += 11;
                 aces += 1;
@@ -555,7 +393,7 @@ class BlackjackGame {
      * Evaluate whether a hit decision deserves heckling
      */
     evaluateHitDecision(hand, dealerCard) {
-        if (!hand || !dealerCard) {
+        if (!hand || !dealerCard || !this.hecklerManager) {
             return { shouldHeckle: false, message: null };
         }
         const total = hand.value ?? 0;
@@ -564,35 +402,35 @@ class BlackjackGame {
         const dealerLabel = this.formatCardLabel(dealerCard);
 
         if (!isSoft && total >= 17) {
-            const template = this.pickRandomMessage('hard17');
+            const template = this.hecklerManager.pickRandomMessage('hard17');
             return {
                 shouldHeckle: !!template,
-                message: this.formatHecklerMessage(template, { total })
+                message: this.hecklerManager.formatHecklerMessage(template, { total })
             };
         }
 
         const dealerShowingBustCard = dealerValue !== null && dealerValue >= 2 && dealerValue <= 6;
         if (!isSoft && dealerShowingBustCard && total >= 13 && total <= 16) {
-            const template = this.pickRandomMessage('dealerBustCard');
+            const template = this.hecklerManager.pickRandomMessage('dealerBustCard');
             return {
                 shouldHeckle: !!template,
-                message: this.formatHecklerMessage(template, { total, dealerCard: dealerLabel })
+                message: this.hecklerManager.formatHecklerMessage(template, { total, dealerCard: dealerLabel })
             };
         }
 
         if (!isSoft && dealerShowingBustCard && total === 12) {
-            const template = this.pickRandomMessage('dealerBustCard');
+            const template = this.hecklerManager.pickRandomMessage('dealerBustCard');
             return {
                 shouldHeckle: !!template,
-                message: this.formatHecklerMessage(template, { total, dealerCard: dealerLabel })
+                message: this.hecklerManager.formatHecklerMessage(template, { total, dealerCard: dealerLabel })
             };
         }
 
         if (isSoft && total >= 19) {
-            const template = this.pickRandomMessage('softHigh');
+            const template = this.hecklerManager.pickRandomMessage('softHigh');
             return {
                 shouldHeckle: !!template,
-                message: this.formatHecklerMessage(template, { total })
+                message: this.hecklerManager.formatHecklerMessage(template, { total })
             };
         }
 
@@ -603,17 +441,17 @@ class BlackjackGame {
      * Evaluate if standing is a bad decision (for heckler)
      */
     evaluateStandDecision(hand) {
-        if (!hand) {
+        if (!hand || !this.hecklerManager) {
             return { shouldHeckle: false, message: null };
         }
         const total = hand.value ?? 0;
         
         // Standing with 11 or less is always a bad play
         if (total <= 11) {
-            const template = this.pickRandomMessage('standLow');
+            const template = this.hecklerManager.pickRandomMessage('standLow');
             return {
                 shouldHeckle: !!template,
-                message: this.formatHecklerMessage(template, { total })
+                message: this.hecklerManager.formatHecklerMessage(template, { total })
             };
         }
 
@@ -719,13 +557,7 @@ class BlackjackGame {
         this.initSettingsPanel();
         this.setupKeyboardHotkeys();
         
-        if (this.hecklerPreferences === null) {
-            this.hecklerPreferences = {};
-        }
-        if (this.hecklerPreferences.enabled === undefined) {
-            this.hecklerPreferences.enabled = this.voiceEnabled;
-            this.saveHecklerPreferences();
-        }
+        // Initial heckler setup is done in HecklerManager and SettingsManager
         
         // Wire insurance buttons
         const insuranceBtn = document.getElementById('insurance-btn');
@@ -837,7 +669,7 @@ class BlackjackGame {
         console.log('%c1%c = Bet $100', 'color: #FFD700; font-weight: bold', 'color: #fff');
         console.log('%c5%c = Bet $500', 'color: #FFD700; font-weight: bold', 'color: #fff');
         console.log('%cI%c = Insurance', 'color: #FFD700; font-weight: bold', 'color: #fff');
-
+        
         document.addEventListener('keydown', (event) => {
             // Don't trigger hotkeys if user is typing in an input field
             if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
@@ -1855,7 +1687,6 @@ class BlackjackGame {
         
         // Calculate actual balance change (handles single hands, splits, blackjack, insurance)
         const balanceChange = balance - balanceAfterBet;
-        const formattedAmount = Math.abs(balanceChange).toLocaleString();
         
         if (result === 'win') {
             this.log('ROUND WINNER: PLAYER WINS!', 'win');
@@ -1976,30 +1807,6 @@ class BlackjackGame {
             this.ui.showMessage('Game Over', 'info');
         }
         
-        // Calculate expected balance change based on result
-        let expectedBalanceChange = 0;
-        let expectedBalance = balanceAfterBet;
-        
-        if (result === 'blackjack') {
-            // Blackjack pays 3:2 (bet * 1.5 profit)
-            // Bet was already deducted, so we get: bet back + 1.5x bet = bet * 2.5 total
-            expectedBalanceChange = Math.floor(betAmount * 1.5);
-            expectedBalance = balanceAfterBet + betAmount + expectedBalanceChange; // bet back + profit
-        } else if (result === 'win') {
-            // Regular win pays 1:1 (bet back + bet profit)
-            // Bet was already deducted, so we get: bet back + bet = bet * 2 total
-            expectedBalanceChange = betAmount; // Profit is 1x bet
-            expectedBalance = balanceAfterBet + betAmount + expectedBalanceChange; // bet back + profit
-        } else if (result === 'loss') {
-            // Loss - bet is already deducted, no payout
-            expectedBalanceChange = 0;
-            expectedBalance = balanceAfterBet; // No change, bet already lost
-        } else if (result === 'push') {
-            // Push - bet is returned (no profit, no loss)
-            expectedBalanceChange = 0;
-            expectedBalance = balanceAfterBet + betAmount; // Bet returned
-        }
-        
         // Comprehensive game summary logging
         const balanceBeforeBet = balanceAfterBet + betAmount; // Reconstruct balance before bet
         
@@ -2013,17 +1820,6 @@ class BlackjackGame {
         console.log(`💵 Balance After Bet: $${balanceAfterBet}`);
         console.log(`💵 Balance After Round: $${balance}`);
         console.log(`📈 Actual Balance Change (from after bet): $${balance - balanceAfterBet}`);
-        console.log(`📈 Expected Balance Change: $${betAmount + expectedBalanceChange} (bet back + profit)`);
-        console.log(`💵 Expected Final Balance: $${expectedBalance}`);
-        console.log(`🏆 Result: ${result}`);
-        
-        if (balance !== expectedBalance) {
-            console.error(`❌ BALANCE MISMATCH! Expected $${expectedBalance}, got $${balance}`);
-            console.error(`   Difference: $${balance - expectedBalance}`);
-            console.error(`   This means the backend paid out incorrectly!`);
-        } else {
-            console.log(`✅ Balance calculation is CORRECT`);
-        }
         console.log('═══════════════════════════════════════════════════════');
         
         // Store balance for next round comparison
@@ -2249,7 +2045,6 @@ class BlackjackGame {
         fillEl.style.width = `${progressWidth}%`;
 
         // Determine color state based on card count
-        // Green: >200 cards, Yellow: 156-200, Orange: 130-156, Red: <130
         display.classList.remove('warning', 'danger');
         
         if (deckRemaining <= cutCardThreshold) {
@@ -2544,359 +2339,84 @@ class BlackjackGame {
             }
         }
         
-        // Render player hand
-        const playerHand = this.gameState.player.hands[this.gameState.player.current_hand_index];
-        if (playerHand && playerHand.cards) {
-            // Only add if not already rendered (check by count)
-            if (this.playerHandManager.cards.length !== playerHand.cards.length) {
-                console.log('Rendering player cards:', playerHand.cards.length);
-                this.playerHandManager.clear();
-                playerHand.cards.forEach((card, index) => {
-                    const playerHitDelay = Math.max(0, Number.isFinite(this.playerHitDelayMs) ? this.playerHitDelayMs : this.defaultPlayerHitDelayMs);
-                    const delay = index * playerHitDelay;
-                    this.playerHandManager.dealCard(card, false, delay);
-                });
-            }
-        }
-        
-        // Render dealer hand
-        if (this.gameState.dealer && this.gameState.dealer.full_hand) {
-            // Only add if not already rendered (check by count)
-            if (this.dealerHandManager.cards.length !== this.gameState.dealer.full_hand.length) {
-                console.log('Rendering dealer cards:', this.gameState.dealer.full_hand.length);
-                this.dealerHandManager.clear();
-                this.gameState.dealer.full_hand.forEach((card, index) => {
-                    const playerHitDelay = Math.max(0, Number.isFinite(this.playerHitDelayMs) ? this.playerHitDelayMs : this.defaultPlayerHitDelayMs);
-                    const delay = index * playerHitDelay;
-                    const isHidden = index === 0 && this.gameState.dealer.hole_card_hidden;
-                    this.dealerHandManager.dealCard(card, isHidden, delay);
-                });
-            }
-        }
-    }
-    
-    /**
-     * Add a new card to player hand (for hits)
-     */
-    addCardToHand(card) {
-        if (!this.playerHandManager) return;
-        
-        const playerHand = this.gameState.player.hands[this.gameState.player.current_hand_index];
-        if (playerHand && playerHand.cards) {
-            // Get the number of existing cards to calculate delay
-            const cardCount = playerHand.cards.length;
-            const playerHitDelay = Math.max(0, Number.isFinite(this.playerHitDelayMs) ? this.playerHitDelayMs : this.defaultPlayerHitDelayMs);
-            const delay = (cardCount - 1) * playerHitDelay;  // Last card has previous delay
+        // Player hands
+        if (this.gameState.player && Array.isArray(this.gameState.player.hands)) {
+            const requestedIndex = this.gameState.player.current_hand_index || 0;
+            const handsArray = this.gameState.player.hands;
             
-            console.log('➕ Adding new card to hand (total:', cardCount, ')');
-            this.playerHandManager.dealCard(card, false, delay);
-        }
-    }
-
-    /**
-     * Clear hands
-     */
-    clearHands() {
-        this.playerHandManager.clear();
-        this.dealerHandManager.clear();
-    }
-
-    /**
-     * Add game result to history
-     */
-    addGameHistory(result, bet, balanceChange) {
-        const timestamp = new Date().toLocaleTimeString();
-        
-        // Determine the display text and amount change
-        let displayResult = result.toUpperCase();
-        let amountDisplay = '';
-        
-        if (result === 'win') {
-            amountDisplay = `+$${bet * 2}`; // Bet returned + profit
-        } else if (result === 'blackjack') {
-            amountDisplay = `+$${Math.floor(bet * 2.5)}`; // Bet returned + 1.5x profit
-        } else if (result === 'loss') {
-            amountDisplay = `-$${bet}`;
-        } else if (result === 'push') {
-            amountDisplay = `$0`;
-        }
-        
-        const historyItem = {
-            result,
-            displayResult,
-            bet,
-            amountDisplay,
-            balanceChange,
-            timestamp
-        };
-        
-        // Add to beginning of array
-        this.gameHistory.unshift(historyItem);
-        
-        // Keep only last 5
-        if (this.gameHistory.length > 5) {
-            this.gameHistory.pop();
-        }
-        
-        this.ui.updateHistoryDisplay();
-    }
-
-    /**
-     * Set a chip as the default bet
-     */
-    setDefaultBet(value) {
-        this.defaultBetAmount = value;
-        this.stateManager.saveDefaultBet(value);
-        this.updateDefaultBetDisplay();
-        this.log(`💰 Default bet set to $${value}`, 'action');
-        this.ui.showMessage(`Default bet set to $${value}`, 'success');
-    }
-
-    /**
-     * Update visual display of default bet indicator
-     */
-    updateDefaultBetDisplay() {
-        // Remove previous default indicator
-        document.querySelectorAll('.chip').forEach(chip => {
-            chip.classList.remove('default-bet');
-            chip.removeAttribute('data-default');
-        });
-        
-        // Add indicator to default bet chip
-        if (this.defaultBetAmount) {
-            const defaultChip = document.querySelector(`.chip[data-value="${this.defaultBetAmount}"]`);
-            if (defaultChip) {
-                defaultChip.classList.add('default-bet');
-                defaultChip.setAttribute('data-default', 'true');
+            // Use safe index logic to prevent crashes if backend index is out of sync
+            let handIndexToUse = 0;
+            if (requestedIndex < handsArray.length) {
+                handIndexToUse = requestedIndex;
+            } else if (handsArray.length > 0) {
+                // Fallback to last available hand if index is out of bounds
+                handIndexToUse = Math.max(0, handsArray.length - 1);
+                console.warn(`⚠️ Hand index ${requestedIndex} out of bounds (length: ${handsArray.length}), using ${handIndexToUse}`);
             }
-        }
-    }
-
-    addInsuranceHistory(paid, amount) {
-        const timestamp = new Date().toLocaleTimeString();
-        const historyItem = {
-            result: paid ? 'insurance_win' : 'insurance_loss',
-            displayResult: 'INSURANCE',
-            bet: 0,
-            amountDisplay: paid ? `+$${amount}` : `-$${amount}`,
-            balanceChange: paid ? amount : -amount,
-            timestamp
-        };
-        this.gameHistory.unshift(historyItem);
-        if (this.gameHistory.length > 5) this.gameHistory.pop();
-        this.ui.updateHistoryDisplay();
-    }
-}
-
-// Global game instance
-// NOTE: This will be set by main.js during module initialization
-let game = null;
-
-// Global functions for button onclick handlers
-function selectChip(value) {
-    if (game) {
-        game.selectChip(value);
-        game.addToBet(value);
-    }
-}
-
-function clearBet() {
-    if (game) {
-        game.clearBet();
-    }
-}
-
-function dealCards() {
-    if (game) {
-        game.dealCards();
-    }
-}
-
-function playerHit() {
-    console.log('🖱️ Hit button clicked! game exists:', !!game, 'gameId:', game?.gameId, 'isProcessing:', game?.isProcessing);
-    if (game) {
-        // Check if button is actually disabled
-        const hitBtn = document.getElementById('hit-btn');
-        if (hitBtn && hitBtn.disabled) {
-            console.warn('⚠️ Hit button is disabled! State:', game.gameState?.state);
-            return;
-        }
-        game.playerHit();
-    } else {
-        console.error('❌ Game object not initialized!');
-    }
-}
-
-function playerStand() {
-    if (game) {
-        game.playerStand();
-    }
-}
-
-function playerDoubleDown() {
-    if (game) {
-        game.playerDoubleDown();
-    }
-}
-
-function playerSplit() {
-    if (game) {
-        game.playerSplit();
-    }
-}
-
-function playerSurrender() {
-    if (game) {
-        game.playerSurrender();
-    }
-}
-
-function newGame() {
-    if (game) {
-        game.newGame();
-    }
-}
-
-function refreshBankroll() {
-    if (game) {
-        game.refreshBankroll();
-    }
-}
-
-/**
- * Rules Panel Management
- */
-let rulesPanel = {
-    isOpen: false,
-    currentPage: 'basic',
-    
-    init() {
-        const infoToggle = document.getElementById('info-toggle');
-        const rulesCloseBtn = document.getElementById('rules-close');
-        const rulesNextBtn = document.getElementById('rules-next-btn');
-        const rulesPrevBtn = document.getElementById('rules-prev-btn');
-        const rulesCasinoInfoBtn = document.getElementById('rules-casino-info-btn');
-        const rulesBackBtn = document.getElementById('rules-back-btn');
-        const rulesShortcutsBtn = document.getElementById('rules-shortcuts-btn');
-        const rulesShortcutsBackBtn = document.getElementById('rules-shortcuts-back-btn');
-        
-        if (infoToggle) {
-            infoToggle.addEventListener('click', () => this.toggle());
-        }
-        
-        if (rulesCloseBtn) {
-            rulesCloseBtn.addEventListener('click', () => this.close());
-        }
-        
-        if (rulesNextBtn) {
-            rulesNextBtn.addEventListener('click', () => this.showPage('advanced'));
-        }
-        
-        if (rulesPrevBtn) {
-            rulesPrevBtn.addEventListener('click', () => this.showPage('basic'));
-        }
-        
-        if (rulesCasinoInfoBtn) {
-            rulesCasinoInfoBtn.addEventListener('click', () => this.showPage('casino'));
-        }
-        
-        if (rulesBackBtn) {
-            rulesBackBtn.addEventListener('click', () => this.showPage('advanced'));
-        }
-        
-        if (rulesShortcutsBtn) {
-            rulesShortcutsBtn.addEventListener('click', () => this.showPage('shortcuts'));
-        }
-        
-        if (rulesShortcutsBackBtn) {
-            rulesShortcutsBackBtn.addEventListener('click', () => this.showPage('basic'));
-        }
-        
-        // Close rules panel when clicking outside
-        document.addEventListener('click', (e) => {
-            const rulesPanelEl = document.getElementById('rules-panel');
-            const infoToggleEl = document.getElementById('info-toggle');
             
-            if (this.isOpen && rulesPanelEl && !rulesPanelEl.contains(e.target) && !infoToggleEl.contains(e.target)) {
-                this.close();
-            }
-        });
-        
-        // Close rules panel with Escape key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && this.isOpen) {
-                this.close();
-            }
-        });
-    },
-    
-    toggle() {
-        if (this.isOpen) {
-            this.close();
-        } else {
-            this.open();
-        }
-    },
-    
-    open() {
-        const rulesPanelEl = document.getElementById('rules-panel');
-        const settingsPanelEl = document.getElementById('settings-panel');
-        
-        if (rulesPanelEl) {
-            rulesPanelEl.classList.add('open');
-            rulesPanelEl.setAttribute('aria-hidden', 'false');
-            this.isOpen = true;
+            const hand = handsArray[handIndexToUse];
             
-            // Close settings panel if open
-            if (settingsPanelEl && settingsPanelEl.classList.contains('open')) {
-                settingsPanelEl.classList.remove('open');
-                settingsPanelEl.setAttribute('aria-hidden', 'true');
+            if (hand && Array.isArray(hand.cards)) {
+                // Only render if we cleared, OR if we have more cards than displayed
+                const currentCardCount = this.playerHandManager.cards.length;
+                if (currentCardCount === 0 || hand.cards.length > currentCardCount) {
+                    // If re-rendering on game over or switching hands, clear first
+                    if (currentCardCount > 0 && currentCardCount !== hand.cards.length) {
+                        this.playerHandManager.clear();
+                    }
+                    
+                    hand.cards.forEach(card => {
+                        // Only add if not already present (simple check)
+                        // For full robustness we might want to track card IDs
+                        this.playerHandManager.dealCard(card, false, 0);
+                    });
+                }
             }
         }
-    },
-    
-    close() {
-        const rulesPanelEl = document.getElementById('rules-panel');
-        
-        if (rulesPanelEl) {
-            rulesPanelEl.classList.remove('open');
-            rulesPanelEl.setAttribute('aria-hidden', 'true');
-            this.isOpen = false;
-        }
-    },
-    
-    showPage(page) {
-        const basicPageEl = document.getElementById('rules-page-basic');
-        const advancedPageEl = document.getElementById('rules-page-advanced');
-        const casinoPageEl = document.getElementById('rules-page-casino');
-        const shortcutsPageEl = document.getElementById('rules-page-shortcuts');
-        
-        if (page === 'basic') {
-            if (basicPageEl) basicPageEl.style.display = 'block';
-            if (advancedPageEl) advancedPageEl.style.display = 'none';
-            if (casinoPageEl) casinoPageEl.style.display = 'none';
-            if (shortcutsPageEl) shortcutsPageEl.style.display = 'none';
-            this.currentPage = 'basic';
-        } else if (page === 'advanced') {
-            if (basicPageEl) basicPageEl.style.display = 'none';
-            if (advancedPageEl) advancedPageEl.style.display = 'block';
-            if (casinoPageEl) casinoPageEl.style.display = 'none';
-            if (shortcutsPageEl) shortcutsPageEl.style.display = 'none';
-            this.currentPage = 'advanced';
-        } else if (page === 'casino') {
-            if (basicPageEl) basicPageEl.style.display = 'none';
-            if (advancedPageEl) advancedPageEl.style.display = 'none';
-            if (casinoPageEl) casinoPageEl.style.display = 'block';
-            if (shortcutsPageEl) shortcutsPageEl.style.display = 'none';
-            this.currentPage = 'casino';
-        } else if (page === 'shortcuts') {
-            if (basicPageEl) basicPageEl.style.display = 'none';
-            if (advancedPageEl) advancedPageEl.style.display = 'none';
-            if (casinoPageEl) casinoPageEl.style.display = 'none';
-            if (shortcutsPageEl) shortcutsPageEl.style.display = 'block';
-            this.currentPage = 'shortcuts';
+
+        // Dealer hand
+        if (this.gameState.dealer) {
+            const dealer = this.gameState.dealer;
+            
+            // Determine which cards to show
+            let cardsToShow = [];
+            
+            if (dealer.hole_card_hidden && Array.isArray(dealer.full_hand) && dealer.full_hand.length >= 2) {
+                // Show first card hidden (back), second card visible
+                // In CardManager, 'true' as second arg means hidden/face down
+                
+                // Logic update: The backend sends [hidden_card, visible_card]
+                // We want to render: [FaceDown, VisibleCard]
+                
+                // Clear first to ensure correct state
+                if (this.dealerHandManager.cards.length === 0) {
+                    this.dealerHandManager.dealCard(dealer.full_hand[0], true, 0); // Hole card (hidden)
+                    this.dealerHandManager.dealCard(dealer.full_hand[1], false, 0); // Up card (visible)
+                }
+            } else if (Array.isArray(dealer.full_hand)) {
+                // Show all cards visible
+                const currentCount = this.dealerHandManager.cards.length;
+                if (currentCount === 0 || dealer.full_hand.length > currentCount) {
+                    // If we have cards but count mismatches (e.g. hole card revealed), 
+                    // we might need to clear to ensure correct order/visibility
+                    // BUT, playDealerTurn handles the animation of revealing hole card.
+                    // Here we just ensure consistency.
+                    
+                    if (currentCount === 0) {
+                        dealer.full_hand.forEach(card => {
+                            this.dealerHandManager.dealCard(card, false, 0);
+                        });
+                    } else {
+                        // We have some cards. 
+                        // If hole card was hidden but now isn't, we need to reveal it visually
+                        // This is usually handled by dealerHandManager.revealCard(0) called in playDealerTurn
+                        // So here we just add any NEW cards
+                        for (let i = currentCount; i < dealer.full_hand.length; i++) {
+                            this.dealerHandManager.dealCard(dealer.full_hand[i], false, 0);
+                        }
+                    }
+                }
+            }
         }
     }
-};
-
-export { BlackjackGame, rulesPanel };
+}

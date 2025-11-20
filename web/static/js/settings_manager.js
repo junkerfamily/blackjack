@@ -5,128 +5,9 @@ export class SettingsManager {
         this.boundEscapeHandler = null;
     }
 
-    getVoiceIdentifier(voice) {
-        if (!voice) return null;
-        return voice.voiceURI || `${voice.name}|${voice.lang}`;
-    }
-
-    populateVoiceOptions(voices) {
-        const { hecklerVoiceSelect, pendingPreferredVoiceId } = this.game;
-        if (!hecklerVoiceSelect) return;
-        if (!Array.isArray(voices)) {
-            hecklerVoiceSelect.innerHTML = '';
-            hecklerVoiceSelect.disabled = true;
-            const option = document.createElement('option');
-            option.value = '';
-            option.textContent = 'No voices available';
-            hecklerVoiceSelect.appendChild(option);
-            return;
-        }
-
-        const filteredVoices = voices.filter((voice) => {
-            const lang = voice.lang || '';
-            return typeof lang === 'string' && lang.toLowerCase().startsWith('en-us');
-        });
-
-        hecklerVoiceSelect.innerHTML = '';
-        if (filteredVoices.length === 0) {
-            const option = document.createElement('option');
-            option.value = '';
-            option.textContent = 'No US English voices';
-            hecklerVoiceSelect.appendChild(option);
-            hecklerVoiceSelect.disabled = true;
-            this.game.hecklerVoice = null;
-            this.game.pendingPreferredVoiceId = null;
-            return;
-        }
-
-        const optionsFragment = document.createDocumentFragment();
-        filteredVoices.forEach((voice) => {
-            const option = document.createElement('option');
-            const identifier = this.getVoiceIdentifier(voice);
-            option.value = identifier;
-            let label = `${voice.name}`;
-            if (voice.lang) {
-                label += ` (${voice.lang})`;
-            }
-            if (voice.default) {
-                label += ' • default';
-            }
-            option.textContent = label;
-            if (this.game.hecklerVoice && identifier === this.getVoiceIdentifier(this.game.hecklerVoice)) {
-                option.selected = true;
-            } else if (!this.game.hecklerVoice && pendingPreferredVoiceId && identifier === pendingPreferredVoiceId) {
-                option.selected = true;
-            }
-            optionsFragment.appendChild(option);
-        });
-        hecklerVoiceSelect.appendChild(optionsFragment);
-        hecklerVoiceSelect.disabled = false;
-
-        const selectedOption = hecklerVoiceSelect.options[hecklerVoiceSelect.selectedIndex];
-        if (selectedOption) {
-            hecklerVoiceSelect.value = selectedOption.value;
-        }
-    }
-
-    assignPreferredVoice(voices) {
-        const { hecklerVoice, pendingPreferredVoiceId } = this.game;
-        if (!Array.isArray(voices) || !voices.length) return;
-        const preferredId = pendingPreferredVoiceId || this.game.hecklerPreferences?.voiceId;
-        if (preferredId) {
-            const preferredVoice = voices.find((voice) => this.getVoiceIdentifier(voice) === preferredId);
-            if (preferredVoice) {
-                this.game.hecklerVoice = preferredVoice;
-                this.game.pendingPreferredVoiceId = preferredId;
-                return;
-            }
-        }
-
-        const filteredVoices = voices.filter((voice) => {
-            const lang = voice.lang || '';
-            return typeof lang === 'string' && lang.toLowerCase().startsWith('en-us');
-        });
-
-        if (filteredVoices.length > 0) {
-            const defaultVoice = filteredVoices.find((voice) => voice.default);
-            if (defaultVoice) {
-                this.game.hecklerVoice = defaultVoice;
-                this.game.pendingPreferredVoiceId = this.getVoiceIdentifier(defaultVoice);
-            } else {
-                this.game.hecklerVoice = filteredVoices[0];
-                this.game.pendingPreferredVoiceId = this.getVoiceIdentifier(filteredVoices[0]);
-            }
-        }
-    }
-
-    refreshVoiceOptions() {
-        if (!this.game.useSpeechSynthesis || typeof window === 'undefined' || !window.speechSynthesis) {
-            return;
-        }
-        const voices = window.speechSynthesis.getVoices();
-        if (voices && voices.length) {
-            this.populateVoiceOptions(voices);
-            this.assignPreferredVoice(voices);
-        }
-    }
-
-    setupHecklerVoices() {
-        if (!this.game.useSpeechSynthesis || typeof window === 'undefined' || !window.speechSynthesis) {
-            return;
-        }
-        const synth = window.speechSynthesis;
-        const loadVoices = () => {
-            const voices = synth.getVoices();
-            if (voices && voices.length) {
-                this.populateVoiceOptions(voices);
-                this.assignPreferredVoice(voices);
-            }
-        };
-        loadVoices();
-        synth.addEventListener('voiceschanged', loadVoices);
-        this.game.hecklerVoicesListener = loadVoices;
-    }
-
+    /**
+     * Initialize settings panel
+     */
     initSettingsPanel() {
         const game = this.game;
         try {
@@ -156,6 +37,7 @@ export class SettingsManager {
                 return;
             }
 
+            // Bankroll Setting
             if (game.bankrollSettingInput) {
                 game.setBankrollAmount(game.bankrollAmount, { persist: false });
                 const applyBankrollChange = () => {
@@ -182,6 +64,7 @@ export class SettingsManager {
                 console.warn('Bankroll setting input not found in settings panel');
             }
 
+            // Dealer Delay Setting
             if (game.dealerDelayInput) {
                 game.dealerDelayInput.value = game.dealerHitDelayMs;
                 const applyDealerDelayChange = () => {
@@ -209,6 +92,7 @@ export class SettingsManager {
                 console.warn('Dealer delay setting input not found in settings panel');
             }
 
+            // Player Delay Setting
             if (game.playerDelayInput) {
                 game.playerDelayInput.value = game.playerHitDelayMs;
                 const applyPlayerDelayChange = () => {
@@ -237,6 +121,7 @@ export class SettingsManager {
                 console.warn('Player delay setting input not found in settings panel');
             }
 
+            // Dealer Hits Soft 17 Setting
             if (game.dealerHitsSoft17Toggle) {
                 game.dealerHitsSoft17Toggle.checked = game.dealerHitsSoft17;
                 game.dealerHitsSoft17Toggle.addEventListener('change', (event) => {
@@ -249,13 +134,14 @@ export class SettingsManager {
                     game.ui.showMessage(statusMessage, 'info');
                     if (game.gameState) {
                         game.gameState.dealer_hits_soft_17 = game.dealerHitsSoft17;
-                        game.updateTableSign();
+                        game.ui.updateTableSign();
                     }
                 });
             } else {
                 console.warn('Dealer hits soft 17 toggle not found in settings panel');
             }
 
+            // Force Dealer Hand (Test Mode)
             if (game.forceDlrHandInput) {
                 const applyForceDlrHandChange = async () => {
                     const handString = game.forceDlrHandInput.value.trim();
@@ -288,6 +174,7 @@ export class SettingsManager {
                 console.warn('Force dealer hand input not found in settings panel');
             }
 
+            // Force Player Hand (Test Mode)
             if (game.forcePlayerHandInput) {
                 const applyForcePlayerHandChange = async () => {
                     const handString = game.forcePlayerHandInput.value.trim();
@@ -328,6 +215,7 @@ export class SettingsManager {
                 console.warn('Force player hand input not found in settings panel');
             }
 
+            // Test Peek Button
             if (game.testPeekButton) {
                 game.testPeekButton.addEventListener('click', () => game.ui.handleTestPeekAnimation());
             } else {
@@ -338,25 +226,101 @@ export class SettingsManager {
             game.ui.updateDealerDelayHelper();
             game.ui.updatePlayerDelayHelper();
 
-            if (game.hecklerEnabledToggle) {
-                game.hecklerEnabledToggle.checked = game.voiceEnabled;
-                game.hecklerEnabledToggle.addEventListener('change', (event) => {
-                    game.voiceEnabled = event.target.checked;
-                    game.saveHecklerPreferences();
-                    const statusMessage = game.voiceEnabled ? 'Voice commentary enabled' : 'Voice commentary disabled';
-                    game.log(statusMessage, 'success');
-                    if (game.voiceEnabled) {
-                        game.previewHecklerVoice(true);
-                    } else {
-                        game.stopHecklerSpeech();
-                    }
-                });
-            }
+            // Heckler Settings - Delegate to HecklerManager
+            if (game.hecklerManager) {
+                if (game.hecklerEnabledToggle) {
+                    game.hecklerEnabledToggle.checked = game.hecklerManager.voiceEnabled;
+                    game.hecklerEnabledToggle.addEventListener('change', (event) => {
+                        game.hecklerManager.voiceEnabled = event.target.checked;
+                        game.hecklerManager.savePreferences();
+                        const statusMessage = game.hecklerManager.voiceEnabled ? 'Voice commentary enabled' : 'Voice commentary disabled';
+                        game.log(statusMessage, 'success');
+                        if (game.hecklerManager.voiceEnabled) {
+                            game.hecklerManager.previewVoice(true);
+                        } else {
+                            game.hecklerManager.stop();
+                        }
+                    });
+                }
 
-            if (game.hecklerTestButton) {
-                game.hecklerTestButton.addEventListener('click', () => {
-                    game.playVoiceTest();
-                });
+                if (game.hecklerTestButton) {
+                    game.hecklerTestButton.addEventListener('click', () => {
+                        game.hecklerManager.playVoiceTest();
+                    });
+                }
+
+                if (game.hecklerSpeedRange) {
+                    const hm = game.hecklerManager;
+                    const clampedRate = Math.min(
+                        parseFloat(game.hecklerSpeedRange.max || '1.6'),
+                        Math.max(parseFloat(game.hecklerSpeedRange.min || '0.6'), hm.hecklerSpeechRate)
+                    );
+                    hm.hecklerSpeechRate = clampedRate;
+                    game.hecklerSpeedRange.value = clampedRate;
+                    this.updateSpeedDisplay(clampedRate);
+                    game.hecklerSpeedRange.addEventListener('input', (event) => {
+                        const rate = parseFloat(event.target.value);
+                        if (!Number.isNaN(rate)) {
+                            hm.hecklerSpeechRate = rate;
+                            this.updateSpeedDisplay(rate);
+                            hm.savePreferences();
+                        }
+                    });
+                }
+
+                // Initialize Voice Selection Listener
+                if (game.hecklerVoiceSelect) {
+                    game.hecklerVoiceSelect.addEventListener('change', (event) => {
+                        const selectedId = event.target.value;
+                        game.hecklerManager.pendingPreferredVoiceId = selectedId || null;
+                        
+                        if (!game.hecklerManager.useSpeechSynthesis || typeof window === 'undefined' || !window.speechSynthesis) {
+                            return;
+                        }
+                        const voices = window.speechSynthesis.getVoices();
+                        if (!voices || !voices.length) {
+                            return;
+                        }
+                        
+                        const chosenVoice = voices.find((voice) => game.hecklerManager.getVoiceIdentifier(voice) === selectedId);
+                        if (chosenVoice) {
+                            game.hecklerManager.hecklerVoice = chosenVoice;
+                            game.hecklerManager.savePreferences();
+                            game.hecklerManager.previewVoice(true);
+                        }
+                    });
+                }
+
+                // Initial UI State for Heckler
+                if (game.hecklerManager.useSpeechSynthesis) {
+                    game.hecklerManager.refreshVoiceOptions();
+                    if (game.hecklerSettingsNote) {
+                        game.hecklerSettingsNote.hidden = true;
+                    }
+                    if (game.hecklerTestButton) {
+                        game.hecklerTestButton.disabled = false;
+                        game.hecklerTestButton.title = '';
+                    }
+                } else {
+                    if (game.hecklerVoiceSelect) {
+                        game.hecklerVoiceSelect.innerHTML = '';
+                        const option = document.createElement('option');
+                        option.value = '';
+                        option.textContent = 'Speech not supported';
+                        game.hecklerVoiceSelect.appendChild(option);
+                        game.hecklerVoiceSelect.disabled = true;
+                    }
+                    if (game.hecklerSpeedRange) {
+                        game.hecklerSpeedRange.disabled = true;
+                    }
+                    if (game.hecklerSettingsNote) {
+                        game.hecklerSettingsNote.hidden = false;
+                    }
+                    if (game.hecklerTestButton) {
+                        game.hecklerTestButton.disabled = true;
+                        game.hecklerTestButton.title = 'Speech synthesis not supported';
+                    }
+                }
             }
 
             if (game.trumpetTestButton) {
@@ -365,49 +329,7 @@ export class SettingsManager {
                 });
             }
 
-            if (game.hecklerSpeedRange) {
-                const clampedRate = Math.min(
-                    parseFloat(game.hecklerSpeedRange.max || '1.6'),
-                    Math.max(parseFloat(game.hecklerSpeedRange.min || '0.6'), game.hecklerSpeechRate)
-                );
-                game.hecklerSpeechRate = clampedRate;
-                game.hecklerSpeedRange.value = clampedRate;
-                this.updateSpeedDisplay(clampedRate);
-                game.hecklerSpeedRange.addEventListener('input', (event) => {
-                    const rate = parseFloat(event.target.value);
-                    if (!Number.isNaN(rate)) {
-                        game.hecklerSpeechRate = rate;
-                        this.updateSpeedDisplay(rate);
-                        game.saveHecklerPreferences();
-                    }
-                });
-            }
-
-            const updateVoiceSelection = () => {
-                if (!game.hecklerVoiceSelect) return;
-                game.hecklerVoiceSelect.addEventListener('change', (event) => {
-                    const selectedId = event.target.value;
-                    game.pendingPreferredVoiceId = selectedId || null;
-                    if (!game.useSpeechSynthesis || typeof window === 'undefined' || !window.speechSynthesis) {
-                        return;
-                    }
-                    const voices = window.speechSynthesis.getVoices();
-                    if (!voices || !voices.length) {
-                        return;
-                    }
-                    const chosenVoice = voices.find((voice) => this.getVoiceIdentifier(voice) === selectedId);
-                    if (chosenVoice) {
-                        game.hecklerVoice = chosenVoice;
-                        if (game.hecklerPreferences === null) {
-                            game.hecklerPreferences = {};
-                        }
-                        game.hecklerPreferences.voiceId = selectedId;
-                        game.saveHecklerPreferences();
-                        game.previewHecklerVoice(true);
-                    }
-                });
-            };
-
+            // Settings Toggle Logic
             if (game.settingsToggle) {
                 game.settingsToggle.setAttribute('aria-expanded', 'false');
                 game.settingsToggle.addEventListener('click', () => {
@@ -419,36 +341,6 @@ export class SettingsManager {
                 game.settingsCloseBtn.addEventListener('click', () => this.toggleSettingsPanel(false));
             }
 
-            if (game.useSpeechSynthesis) {
-                updateVoiceSelection();
-                this.refreshVoiceOptions();
-                if (game.hecklerSettingsNote) {
-                    game.hecklerSettingsNote.hidden = true;
-                }
-                if (game.hecklerTestButton) {
-                    game.hecklerTestButton.disabled = false;
-                    game.hecklerTestButton.title = '';
-                }
-            } else {
-                if (game.hecklerVoiceSelect) {
-                    game.hecklerVoiceSelect.innerHTML = '';
-                    const option = document.createElement('option');
-                    option.value = '';
-                    option.textContent = 'Speech not supported';
-                    game.hecklerVoiceSelect.appendChild(option);
-                    game.hecklerVoiceSelect.disabled = true;
-                }
-                if (game.hecklerSpeedRange) {
-                    game.hecklerSpeedRange.disabled = true;
-                }
-                if (game.hecklerSettingsNote) {
-                    game.hecklerSettingsNote.hidden = false;
-                }
-                if (game.hecklerTestButton) {
-                    game.hecklerTestButton.disabled = true;
-                    game.hecklerTestButton.title = 'Speech synthesis not supported';
-                }
-            }
         } catch (error) {
             console.error('Error initializing settings panel:', error);
         }
@@ -469,6 +361,8 @@ export class SettingsManager {
             game.settingsPanel.classList.add('open');
             game.settingsPanel.setAttribute('aria-hidden', 'false');
             game.settingsToggle.setAttribute('aria-expanded', 'true');
+            
+            // Sync UI values with game state
             if (game.bankrollSettingInput) {
                 game.bankrollSettingInput.value = game.bankrollAmount;
             }
@@ -478,12 +372,15 @@ export class SettingsManager {
             if (game.playerDelayInput) {
                 game.playerDelayInput.value = game.playerHitDelayMs;
             }
-            if (game.hecklerEnabledToggle) {
-                game.hecklerEnabledToggle.checked = game.voiceEnabled;
+            
+            if (game.hecklerManager && game.hecklerEnabledToggle) {
+                game.hecklerEnabledToggle.checked = game.hecklerManager.voiceEnabled;
             }
+
             game.ui.updateBankrollHelper();
             game.ui.updateDealerDelayHelper();
             game.ui.updatePlayerDelayHelper();
+            
             if (!this.boundOutsideClickHandler) {
                 this.boundOutsideClickHandler = (event) => this.handleOutsideClick(event);
                 document.addEventListener('mousedown', this.boundOutsideClickHandler);
@@ -525,118 +422,36 @@ export class SettingsManager {
         }
     }
 
-    /**
-     * Heckler voice-related methods
-     */
-    previewHecklerVoice(force = false) {
-        const game = this.game;
-        if ((!force && !game.voiceEnabled) || !game.useSpeechSynthesis || !game.hecklerVoice) return;
-        const synth = window.speechSynthesis;
-        const utterance = new SpeechSynthesisUtterance('Are you feeling lucky today?');
-        utterance.voice = game.hecklerVoice;
-        utterance.rate = game.hecklerSpeechRate;
-        synth.cancel();
-        synth.speak(utterance);
+    // Delegate methods to HecklerManager for backward compatibility/convenience
+    
+    setupHecklerVoices() {
+        if (this.game.hecklerManager) {
+            this.game.hecklerManager.setupHecklerVoices();
+        }
     }
-
-    playVoiceTest() {
-        const game = this.game;
-        if (!game.useSpeechSynthesis || typeof window === 'undefined' || !window.speechSynthesis) {
-            game.log('Voice test requested but speech synthesis is unavailable', 'warn');
-            return;
-        }
-        const synth = window.speechSynthesis;
-        try {
-            synth.cancel();
-        } catch (error) {
-            console.warn('Failed to cancel speech synthesis before test:', error);
-        }
-        const utterance = new SpeechSynthesisUtterance('Testing 1, Testing 2, Testing 3.');
-        if (game.hecklerVoice) {
-            utterance.voice = game.hecklerVoice;
-        } else {
-            const voices = synth.getVoices();
-            const usVoice = voices.find((voice) => {
-                const lang = voice.lang || '';
-                return typeof lang === 'string' && lang.toLowerCase().startsWith('en-us');
-            });
-            if (usVoice) {
-                utterance.voice = usVoice;
-                game.hecklerVoice = usVoice;
-                game.pendingPreferredVoiceId = this.getVoiceIdentifier(usVoice);
-                game.saveHecklerPreferences();
-            }
-        }
-        utterance.rate = game.hecklerSpeechRate;
-        utterance.pitch = 1;
-        utterance.volume = 0.9;
-        synth.speak(utterance);
-    }
-
+    
     speakHecklerLine(message, token) {
-        const game = this.game;
-        if (!game.voiceEnabled || !game.useSpeechSynthesis || !message || typeof window === 'undefined') return false;
-        const synth = window.speechSynthesis;
-        if (!synth) return false;
-
-        try {
-            this.stopHecklerSpeech();
-            const utterance = new SpeechSynthesisUtterance(message);
-            if (game.hecklerVoice) {
-                utterance.voice = game.hecklerVoice;
-            } else {
-                const voices = synth.getVoices();
-                const usVoice = voices.find((voice) => {
-                    const lang = voice.lang || '';
-                    return typeof lang === 'string' && lang.toLowerCase().startsWith('en-us');
-                });
-                if (usVoice) {
-                    utterance.voice = usVoice;
-                    game.hecklerVoice = usVoice;
-                    game.pendingPreferredVoiceId = this.getVoiceIdentifier(usVoice);
-                    game.saveHecklerPreferences();
-                    this.refreshVoiceOptions();
-                }
-            }
-            utterance.rate = game.hecklerSpeechRate;
-            utterance.pitch = 1;
-            utterance.volume = 0.9;
-            utterance.onend = () => {
-                game.currentHecklerUtterance = null;
-                if (token && token === game.activeHecklerToken) {
-                    game.hideHecklerMessage(token);
-                }
-            };
-            utterance.onerror = () => {
-                game.currentHecklerUtterance = null;
-                if (token && token === game.activeHecklerToken) {
-                    game.hideHecklerMessage(token);
-                }
-            };
-            game.currentHecklerUtterance = utterance;
-            synth.speak(utterance);
-            return true;
-        } catch (error) {
-            console.error('Heckler speech failed:', error);
-            game.useSpeechSynthesis = false;
-            game.currentHecklerUtterance = null;
-            return false;
+        if (this.game.hecklerManager) {
+            return this.game.hecklerManager.speak(message, token);
+        }
+        return false;
+    }
+    
+    stopHecklerSpeech() {
+        if (this.game.hecklerManager) {
+            this.game.hecklerManager.stop();
         }
     }
-
-    stopHecklerSpeech() {
-        const game = this.game;
-        if (!game.useSpeechSynthesis || typeof window === 'undefined') return;
-        const synth = window.speechSynthesis;
-        if (!synth) return;
-        try {
-            if (synth.speaking || synth.pending) {
-                synth.cancel();
-            }
-        } catch (error) {
-            console.error('Failed to cancel heckler speech:', error);
-        } finally {
-            game.currentHecklerUtterance = null;
+    
+    previewHecklerVoice(force = false) {
+         if (this.game.hecklerManager) {
+            this.game.hecklerManager.previewVoice(force);
+        }
+    }
+    
+    playVoiceTest() {
+         if (this.game.hecklerManager) {
+            this.game.hecklerManager.playVoiceTest();
         }
     }
 
@@ -739,4 +554,3 @@ export class SettingsManager {
         }
     }
 }
-

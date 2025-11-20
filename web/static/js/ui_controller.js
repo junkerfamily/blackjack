@@ -54,6 +54,14 @@ export class UIController {
         const gameState = game.gameState;
         if (!gameState) {
             game.log('Cannot update button states: no gameState', 'warn');
+            // Enable betting buttons even if gameState is not set yet
+            const dealBtn = document.getElementById('deal-btn');
+            if (dealBtn) {
+                dealBtn.disabled = game.isProcessing;
+            }
+            document.querySelectorAll('.chip').forEach((chip) => {
+                chip.disabled = game.isProcessing;
+            });
             return;
         }
 

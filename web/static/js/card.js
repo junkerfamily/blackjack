@@ -3,7 +3,7 @@
  * Handles card rendering, animations, and hand management
  */
 
-class Card {
+export class Card {
     /**
      * Create a card instance
      * @param {Object} cardData - Card data {suit, rank, value}
@@ -231,7 +231,7 @@ class Card {
     }
 }
 
-class CardManager {
+export class CardManager {
     /**
      * Create a card manager for a hand
      * @param {HTMLElement|string} container - Container element or selector
