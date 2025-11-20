@@ -32,8 +32,13 @@ class BlackjackGame {
         this.dealerHitDelayMs = this.stateManager.loadDealerHitDelay();
         this.dealerDelayInput = null;
         this.dealerDelayHelperElement = null;
+        this.defaultPlayerHitDelayMs = this.stateManager.defaultPlayerHitDelayMs;
+        this.playerHitDelayMs = this.stateManager.loadPlayerHitDelay();
+        this.playerDelayInput = null;
+        this.playerDelayHelperElement = null;
         this.dealerHitsSoft17 = this.stateManager.loadDealerHitsSoft17();
         this.dealerHitsSoft17Toggle = null;
+        this.forcePlayerHandInput = null;
         this.actionStatusElement = null; // Status message element
         this.actionStatusTimeout = null; // Timeout for clearing status
         this.hecklerElement = null;
@@ -51,6 +56,7 @@ class BlackjackGame {
         this.hecklerSpeedRange = null;
         this.hecklerSpeedDisplay = null;
         this.hecklerTestButton = null;
+        this.trumpetTestButton = null;
         this.hecklerSettingsNote = null;
         this.forceDlrHandInput = null;
         this.testPeekButton = null;
@@ -259,6 +265,37 @@ class BlackjackGame {
 
         if (updateInput && this.dealerDelayInput) {
             this.dealerDelayInput.value = delay;
+        }
+
+        return {
+            delay,
+            fallbackUsed,
+            clamped,
+            clampedToMin,
+            clampedToMax,
+            previous: previousDelay
+        };
+    }
+
+    setPlayerHitDelay(rawValue, { fallback, persist = true, updateInput = true } = {}) {
+        const previousDelay = Number.isFinite(this.playerHitDelayMs) ? this.playerHitDelayMs : this.defaultPlayerHitDelayMs;
+        const fallbackDelay = fallback ?? previousDelay;
+        const {
+            delay,
+            fallbackUsed,
+            clamped,
+            clampedToMin,
+            clampedToMax
+        } = this.stateManager.normalizePlayerHitDelay(rawValue, fallbackDelay);
+
+        this.playerHitDelayMs = delay;
+
+        if (persist) {
+            this.stateManager.savePlayerHitDelay(delay);
+        }
+
+        if (updateInput && this.playerDelayInput) {
+            this.playerDelayInput.value = delay;
         }
 
         return {
@@ -714,6 +751,11 @@ class BlackjackGame {
             logHandBtn.addEventListener('click', () => this.handleLogHand());
         }
         
+        // View LogHand.log button
+        const viewLogHandBtn = document.getElementById('view-log-hand-btn');
+        if (viewLogHandBtn) {
+            viewLogHandBtn.addEventListener('click', () => this.openLogHandViewer());
+        }
         // Download LogHand.log link
         const downloadLogHandLink = document.getElementById('download-log-hand-link');
         if (downloadLogHandLink) {
@@ -1214,12 +1256,26 @@ class BlackjackGame {
             }
             
             this.log(`Dealing cards for game ${this.gameId}`, 'deal');
+            console.log('🎲 DEALING CARDS:');
+            console.log('   Game ID:', this.gameId);
+            console.log('   Force player hand before deal:', this.gameState?.force_player_hand);
+            console.log('   Force dealer hand before deal:', this.gameState?.force_dealer_hand);
+            
             const result = await this.apiClient.deal({
                 game_id: this.gameId
             });
             
+            console.log('📥 Deal API response:', result);
+            
             if (result.success) {
                 this.log('Deal API call successful', 'success');
+                console.log('✅ Deal successful');
+                console.log('   Result game_state force_player_hand:', result.game_state?.force_player_hand);
+                console.log('   Player hands:', result.game_state?.player?.hands);
+                if (result.game_state?.player?.hands?.[0]?.cards) {
+                    const cards = result.game_state.player.hands[0].cards;
+                    console.log('   Player cards received:', cards.map(c => `${c.rank} of ${c.suit}`));
+                }
                 this.updateGameState(result.game_state);
                 this.renderHands();
                 
@@ -1245,6 +1301,15 @@ class BlackjackGame {
                 if (dealerHand) {
                     const visibleCards = dealerHand.cards?.filter(c => !c.hidden) || [];
                     this.log(`Dealer dealt: ${visibleCards.length} visible cards (1 hidden)`, 'deal');
+                }
+                
+                // Debug: Log forced player hand state
+                console.log('🎲 After dealing cards:');
+                console.log('   force_player_hand:', this.gameState.force_player_hand);
+                console.log('   Player hands:', this.gameState.player?.hands);
+                if (this.gameState.player?.hands?.[0]?.cards) {
+                    const playerCards = this.gameState.player.hands[0].cards;
+                    console.log('   Player cards received:', playerCards.map(c => `${c.rank} of ${c.suit}`));
                 }
                 
                 // Check if game ended immediately (blackjack or dealer blackjack)
@@ -1419,7 +1484,8 @@ class BlackjackGame {
                     // Clear and re-render player hand
                     this.playerHandManager.clear();
                     handToUse.cards.forEach((card, index) => {
-                        const delay = index * 150;
+                        const playerHitDelay = Math.max(0, Number.isFinite(this.playerHitDelayMs) ? this.playerHitDelayMs : this.defaultPlayerHitDelayMs);
+                        const delay = index * playerHitDelay;
                         this.playerHandManager.dealCard(card, false, delay);
                     });
                 } else {
@@ -1608,12 +1674,14 @@ class BlackjackGame {
                     // Clear and re-render all cards to ensure the new card is displayed
                     this.playerHandManager.clear();
                     playerHand.cards.forEach((card, index) => {
-                        const delay = index * 150;
+                        const playerHitDelay = Math.max(0, Number.isFinite(this.playerHitDelayMs) ? this.playerHitDelayMs : this.defaultPlayerHitDelayMs);
+                        const delay = index * playerHitDelay;
                         this.playerHandManager.dealCard(card, false, delay);
                     });
                     
                     // Wait for card animation to complete before proceeding
-                    const lastCardDelay = (playerHand.cards.length - 1) * 150;
+                    const playerHitDelay = Math.max(0, Number.isFinite(this.playerHitDelayMs) ? this.playerHitDelayMs : this.defaultPlayerHitDelayMs);
+                    const lastCardDelay = (playerHand.cards.length - 1) * playerHitDelay;
                     await new Promise(resolve => setTimeout(resolve, lastCardDelay + 300));
                 } else {
                     // Fallback to renderHands if hand structure is unexpected
@@ -2015,6 +2083,14 @@ class BlackjackGame {
         } else if (this.forceDlrHandInput && !state.force_dealer_hand) {
             this.forceDlrHandInput.value = '';
         }
+        if (this.forcePlayerHandInput && state.force_player_hand) {
+            console.log('🔄 Updating force player hand input:', state.force_player_hand);
+            this.forcePlayerHandInput.value = state.force_player_hand;
+        } else if (this.forcePlayerHandInput && !state.force_player_hand) {
+            console.log('🔄 Clearing force player hand input');
+            this.forcePlayerHandInput.value = '';
+        }
+        console.log('📊 Game state update - force_player_hand:', state.force_player_hand);
         
         // Show/hide Log Hand button based on game state
         const logHandBtn = document.getElementById('log-hand-btn');
@@ -2067,13 +2143,25 @@ class BlackjackGame {
      */
     updateTestModeIndicator() {
         const dealerArea = document.querySelector('.dealer-area');
-        if (!dealerArea) return;
+        const playerArea = document.querySelector('.player-area');
         
-        const isTestMode = this.gameState?.force_dealer_hand && this.gameState.force_dealer_hand.trim();
-        if (isTestMode) {
-            dealerArea.classList.add('test-mode');
-        } else {
-            dealerArea.classList.remove('test-mode');
+        const dealerTestMode = this.gameState?.force_dealer_hand && this.gameState.force_dealer_hand.trim();
+        const playerTestMode = this.gameState?.force_player_hand && this.gameState.force_player_hand.trim();
+        
+        if (dealerArea) {
+            if (dealerTestMode) {
+                dealerArea.classList.add('test-mode');
+            } else {
+                dealerArea.classList.remove('test-mode');
+            }
+        }
+        
+        if (playerArea) {
+            if (playerTestMode) {
+                playerArea.classList.add('test-mode');
+            } else {
+                playerArea.classList.remove('test-mode');
+            }
         }
     }
 
@@ -2232,22 +2320,31 @@ class BlackjackGame {
             const chipValue = parseInt(button.dataset.value) || 0;
             const newBetAmount = currentBet + chipValue;
             
+            // Hide chips that are below minimum bet (can't use them for first bet anyway)
+            // Only hide if no bet is placed yet - once you have a bet, you can add smaller chips
+            const belowMinBet = currentBet === 0 && chipValue < minBet;
+            
+            if (belowMinBet) {
+                // Hide chips below minimum bet when placing first bet
+                button.style.display = 'none';
+                return;
+            } else {
+                // Show the chip
+                button.style.display = '';
+            }
+            
             // Disable if:
             // 1. Would exceed max bet
             // 2. Would exceed balance
-            // 3. Chip value is less than min bet (for first bet)
             const wouldExceedMax = newBetAmount > maxBet;
             const wouldExceedBalance = newBetAmount > balance;
-            const belowMinBet = currentBet === 0 && chipValue < minBet;
             
-            if (wouldExceedMax || wouldExceedBalance || belowMinBet) {
+            if (wouldExceedMax || wouldExceedBalance) {
                 button.disabled = true;
                 button.classList.add('disabled');
                 button.title = wouldExceedMax 
                     ? `Maximum bet is $${maxBet}`
-                    : wouldExceedBalance
-                    ? 'Insufficient funds'
-                    : `Minimum bet is $${minBet}`;
+                    : 'Insufficient funds';
             } else {
                 button.disabled = false;
                 button.classList.remove('disabled');
@@ -2371,6 +2468,27 @@ class BlackjackGame {
         }
     }
 
+    async openLogHandViewer() {
+        if (!this.gameId) {
+            this.ui.showMessage('Log viewer unavailable: no active game', 'error');
+            return;
+        }
+
+        try {
+            this.ui.showLoading();
+            const result = await this.apiClient.fetchLogHandContent(this.gameId);
+            if (result?.success) {
+                this.ui.showLogHandViewer(result.content || '');
+            } else {
+                this.ui.showMessage(result?.error || result?.message || 'Failed to load hand log', 'error');
+            }
+        } catch (error) {
+            this.ui.showMessage(error?.message || 'Failed to load hand log', 'error');
+        } finally {
+            this.ui.hideLoading();
+        }
+    }
+
     async clearLogHand() {
         if (!this.gameId) {
             this.ui.showMessage('No active game', 'error');
@@ -2434,7 +2552,8 @@ class BlackjackGame {
                 console.log('Rendering player cards:', playerHand.cards.length);
                 this.playerHandManager.clear();
                 playerHand.cards.forEach((card, index) => {
-                    const delay = index * 150;
+                    const playerHitDelay = Math.max(0, Number.isFinite(this.playerHitDelayMs) ? this.playerHitDelayMs : this.defaultPlayerHitDelayMs);
+                    const delay = index * playerHitDelay;
                     this.playerHandManager.dealCard(card, false, delay);
                 });
             }
@@ -2447,7 +2566,8 @@ class BlackjackGame {
                 console.log('Rendering dealer cards:', this.gameState.dealer.full_hand.length);
                 this.dealerHandManager.clear();
                 this.gameState.dealer.full_hand.forEach((card, index) => {
-                    const delay = index * 150;
+                    const playerHitDelay = Math.max(0, Number.isFinite(this.playerHitDelayMs) ? this.playerHitDelayMs : this.defaultPlayerHitDelayMs);
+                    const delay = index * playerHitDelay;
                     const isHidden = index === 0 && this.gameState.dealer.hole_card_hidden;
                     this.dealerHandManager.dealCard(card, isHidden, delay);
                 });
@@ -2465,7 +2585,8 @@ class BlackjackGame {
         if (playerHand && playerHand.cards) {
             // Get the number of existing cards to calculate delay
             const cardCount = playerHand.cards.length;
-            const delay = (cardCount - 1) * 150;  // Last card has previous delay
+            const playerHitDelay = Math.max(0, Number.isFinite(this.playerHitDelayMs) ? this.playerHitDelayMs : this.defaultPlayerHitDelayMs);
+            const delay = (cardCount - 1) * playerHitDelay;  // Last card has previous delay
             
             console.log('➕ Adding new card to hand (total:', cardCount, ')');
             this.playerHandManager.dealCard(card, false, delay);

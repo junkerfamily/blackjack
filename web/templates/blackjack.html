@@ -171,6 +171,10 @@
                     <button type="button" class="btn-secondary" id="heckler-test-button">Play Test Phrase</button>
                 </div>
                 <div class="settings-row">
+                    <span class="settings-label">Sound Test</span>
+                    <button type="button" class="btn-secondary" id="trumpet-test-button">Play Trumpet Sound</button>
+                </div>
+                <div class="settings-row">
                     <label for="heckler-speed-range" class="settings-label">Speed</label>
                     <div class="settings-range-wrapper">
                         <input type="range" id="heckler-speed-range" min="0.6" max="1.6" step="0.05" value="1.05">
@@ -188,6 +192,11 @@
                     <span class="settings-helper" id="dealer-delay-helper">Delay between dealer hits (0-5000 ms)</span>
                 </div>
                 <div class="settings-row">
+                    <label for="player-delay-input" class="settings-label">Player Card Delay (ms)</label>
+                    <input type="number" id="player-delay-input" class="settings-input" min="0" max="5000" step="50" value="150">
+                    <span class="settings-helper" id="player-delay-helper">Delay between player card animations (0-5000 ms). Current: 150 ms</span>
+                </div>
+                <div class="settings-row">
                     <label for="dealer-hits-soft17-toggle" class="settings-label">Dealer Hits Soft 17</label>
                     <input type="checkbox" id="dealer-hits-soft17-toggle" class="settings-checkbox">
                     <span class="settings-helper">When enabled, dealer hits on Ace-6 (soft 17). Default: dealer stands on all 17s.</span>
@@ -196,6 +205,11 @@
                     <label for="force-dlr-hand-input" class="settings-label">Force DLR Hand (TEST)</label>
                     <input type="text" id="force-dlr-hand-input" class="settings-input" placeholder="e.g., 10,A or A,10" maxlength="10">
                     <span class="settings-helper">Format: "rank1,rank2" (e.g., "10,A" = 10 hole + A upcard). Leave empty to disable.</span>
+                </div>
+                <div class="settings-row">
+                    <label for="force-player-hand-input" class="settings-label">Force Player Hand (TEST)</label>
+                    <input type="text" id="force-player-hand-input" class="settings-input" placeholder="e.g., A,A or 10,10" maxlength="10">
+                    <span class="settings-helper">Format: "rank1,rank2" (e.g., "A,A" for split, "10,10" for pair). Leave empty to disable.</span>
                 </div>
                 <div class="settings-row">
                     <span class="settings-label">Dealer Peek</span>
@@ -207,6 +221,7 @@
                 <div class="settings-row">
                     <span class="settings-label">Hand Log</span>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" id="view-log-hand-btn" class="btn-secondary" style="padding: 8px 16px;">View Log</button>
                         <a href="#" id="download-log-hand-link" class="btn-secondary" style="text-decoration: none; display: inline-block; padding: 8px 16px;">Download LogHand.log</a>
                         <button type="button" id="clear-log-hand-btn" class="btn-secondary" style="padding: 8px 16px;">Clear Log</button>
                     </div>

@@ -138,13 +138,17 @@ export class SettingsManager {
             game.hecklerSpeedRange = document.getElementById('heckler-speed-range');
             game.hecklerSpeedDisplay = document.getElementById('heckler-speed-display');
             game.hecklerTestButton = document.getElementById('heckler-test-button');
+            game.trumpetTestButton = document.getElementById('trumpet-test-button');
             game.hecklerSettingsNote = document.getElementById('heckler-settings-note');
             game.bankrollSettingInput = document.getElementById('bankroll-setting-input');
             game.bankrollHelperElement = document.getElementById('bankroll-setting-helper');
             game.dealerDelayInput = document.getElementById('dealer-delay-input');
             game.dealerDelayHelperElement = document.getElementById('dealer-delay-helper');
+            game.playerDelayInput = document.getElementById('player-delay-input');
+            game.playerDelayHelperElement = document.getElementById('player-delay-helper');
             game.dealerHitsSoft17Toggle = document.getElementById('dealer-hits-soft17-toggle');
             game.forceDlrHandInput = document.getElementById('force-dlr-hand-input');
+            game.forcePlayerHandInput = document.getElementById('force-player-hand-input');
             game.testPeekButton = document.getElementById('test-peek-btn');
 
             if (!game.settingsToggle || !game.settingsPanel) {
@@ -205,6 +209,34 @@ export class SettingsManager {
                 console.warn('Dealer delay setting input not found in settings panel');
             }
 
+            if (game.playerDelayInput) {
+                game.playerDelayInput.value = game.playerHitDelayMs;
+                const applyPlayerDelayChange = () => {
+                    const result = game.setPlayerHitDelay(game.playerDelayInput.value);
+                    if (result.fallbackUsed) {
+                        game.playerDelayInput.value = result.previous;
+                        game.log('Player delay input was empty or invalid; keeping previous value.', 'warn');
+                        return;
+                    }
+
+                    if (result.clamped) {
+                        const clampMessage = result.clampedToMin
+                            ? 'Minimum player delay is 0 ms'
+                            : 'Maximum player delay is 5,000 ms';
+                        game.ui.showMessage(clampMessage, 'warn');
+                    }
+
+                    if (result.delay !== result.previous) {
+                        game.log(`Player card delay updated to ${result.delay} ms`, 'success');
+                    }
+                    game.ui.updatePlayerDelayHelper();
+                };
+                game.playerDelayInput.addEventListener('change', applyPlayerDelayChange);
+                game.playerDelayInput.addEventListener('blur', applyPlayerDelayChange);
+            } else {
+                console.warn('Player delay setting input not found in settings panel');
+            }
+
             if (game.dealerHitsSoft17Toggle) {
                 game.dealerHitsSoft17Toggle.checked = game.dealerHitsSoft17;
                 game.dealerHitsSoft17Toggle.addEventListener('change', (event) => {
@@ -256,6 +288,46 @@ export class SettingsManager {
                 console.warn('Force dealer hand input not found in settings panel');
             }
 
+            if (game.forcePlayerHandInput) {
+                const applyForcePlayerHandChange = async () => {
+                    const handString = game.forcePlayerHandInput.value.trim();
+                    console.log('🎯 Force Player Hand Input Changed:', handString);
+                    if (!game.gameId) {
+                        console.warn('⚠️ No game ID - cannot set forced player hand');
+                        game.ui.showMessage('Please start a game first', 'warn');
+                        return;
+                    }
+                    try {
+                        console.log('📤 Sending force player hand request:', { game_id: game.gameId, hand_string: handString || null });
+                        const result = await game.apiClient.forcePlayerHand({
+                            game_id: game.gameId,
+                            hand_string: handString || null
+                        });
+                        console.log('📥 Force player hand response:', result);
+                        if (result.success) {
+                            console.log('✅ Force player hand successful, updating game state');
+                            console.log('   Game state force_player_hand:', result.game_state?.force_player_hand);
+                            game.updateGameState(result.game_state);
+                            game.updateTestModeIndicator();
+                            const message = handString
+                                ? `Test mode: Player hand forced to ${handString}`
+                                : 'Test mode disabled';
+                            game.log(message, 'success');
+                        } else {
+                            console.error('❌ Force player hand failed:', result.message || result.error);
+                            game.ui.showMessage(result.message || 'Failed to set forced player hand', 'error');
+                        }
+                    } catch (e) {
+                        console.error('❌ Force player hand error:', e);
+                        // Error handled by ApiClient
+                    }
+                };
+                game.forcePlayerHandInput.addEventListener('change', applyForcePlayerHandChange);
+                game.forcePlayerHandInput.addEventListener('blur', applyForcePlayerHandChange);
+            } else {
+                console.warn('Force player hand input not found in settings panel');
+            }
+
             if (game.testPeekButton) {
                 game.testPeekButton.addEventListener('click', () => game.ui.handleTestPeekAnimation());
             } else {
@@ -264,6 +336,7 @@ export class SettingsManager {
 
             game.ui.updateBankrollHelper();
             game.ui.updateDealerDelayHelper();
+            game.ui.updatePlayerDelayHelper();
 
             if (game.hecklerEnabledToggle) {
                 game.hecklerEnabledToggle.checked = game.voiceEnabled;
@@ -283,6 +356,12 @@ export class SettingsManager {
             if (game.hecklerTestButton) {
                 game.hecklerTestButton.addEventListener('click', () => {
                     game.playVoiceTest();
+                });
+            }
+
+            if (game.trumpetTestButton) {
+                game.trumpetTestButton.addEventListener('click', () => {
+                    game.ui.playTrumpetToot();
                 });
             }
 
@@ -396,11 +475,15 @@ export class SettingsManager {
             if (game.dealerDelayInput) {
                 game.dealerDelayInput.value = game.dealerHitDelayMs;
             }
+            if (game.playerDelayInput) {
+                game.playerDelayInput.value = game.playerHitDelayMs;
+            }
             if (game.hecklerEnabledToggle) {
                 game.hecklerEnabledToggle.checked = game.voiceEnabled;
             }
-            game.updateBankrollHelper();
-            game.updateDealerDelayHelper();
+            game.ui.updateBankrollHelper();
+            game.ui.updateDealerDelayHelper();
+            game.ui.updatePlayerDelayHelper();
             if (!this.boundOutsideClickHandler) {
                 this.boundOutsideClickHandler = (event) => this.handleOutsideClick(event);
                 document.addEventListener('mousedown', this.boundOutsideClickHandler);
@@ -421,8 +504,9 @@ export class SettingsManager {
                 document.removeEventListener('keydown', this.boundEscapeHandler);
                 this.boundEscapeHandler = null;
             }
-            game.updateBankrollHelper();
-            game.updateDealerDelayHelper();
+            game.ui.updateBankrollHelper();
+            game.ui.updateDealerDelayHelper();
+            game.ui.updatePlayerDelayHelper();
         }
     }
 

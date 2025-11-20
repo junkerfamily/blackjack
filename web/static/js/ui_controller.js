@@ -311,6 +311,15 @@ export class UIController {
         game.dealerDelayHelperElement.textContent = `Delay between dealer hits (0-5000 ms). Current: ${delayDisplay} ms`;
     }
 
+    updatePlayerDelayHelper() {
+        const game = this.game;
+        if (!game.playerDelayHelperElement) {
+            return;
+        }
+        const delayDisplay = Number.isFinite(game.playerHitDelayMs) ? game.playerHitDelayMs : game.defaultPlayerHitDelayMs;
+        game.playerDelayHelperElement.textContent = `Delay between player card animations (0-5000 ms). Current: ${delayDisplay} ms`;
+    }
+
     updateTableSign() {
         const game = this.game;
         const signContent = document.getElementById('table-sign-content');
@@ -422,7 +431,41 @@ export class UIController {
 
     hideAutoModeLogViewer() {
         if (!this.autoLogViewerOverlayEl) return;
+        // Reset title to default
+        const titleEl = this.autoLogViewerOverlayEl.querySelector('.auto-log-viewer-title');
+        if (titleEl) {
+            titleEl.textContent = 'Auto Mode Log';
+        }
         this.autoLogViewerOverlayEl.style.display = 'none';
+    }
+
+    showLogHandViewer(content = '') {
+        // Reuse the auto mode log viewer but change the title
+        if (!this.autoLogViewerOverlayEl) return;
+        
+        const titleEl = this.autoLogViewerOverlayEl.querySelector('.auto-log-viewer-title');
+        if (titleEl) {
+            titleEl.textContent = 'Hand Log';
+        }
+        
+        if (this.autoLogViewerContentEl) {
+            this.autoLogViewerContentEl.value = content || '';
+            // Scroll to top - must happen after display change and DOM update
+            this.autoLogViewerOverlayEl.style.display = 'flex';
+            setTimeout(() => {
+                this.autoLogViewerContentEl.scrollTop = 0;
+                this.autoLogViewerContentEl.selectionStart = 0;
+                this.autoLogViewerContentEl.selectionEnd = 0;
+                this.autoLogViewerContentEl.focus();
+            }, 50);
+        } else {
+            this.autoLogViewerOverlayEl.style.display = 'flex';
+        }
+    }
+
+    hideLogHandViewer() {
+        // Same as hiding auto mode viewer
+        this.hideAutoModeLogViewer();
     }
 
     /**
@@ -524,13 +567,190 @@ export class UIController {
         messageElement.style.color = '';
     }
 
-    showBlackjackCelebration() {
-        return new Promise((resolve) => {
+    async playTrumpetToot() {
+        try {
+            console.log('🎺 Attempting to play trumpet sound...');
+            
+            // Check if Web Audio API is available
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) {
+                console.error('❌ Web Audio API not available');
+                this.showMessage('Web Audio API not supported in this browser', 'error');
+                return;
+            }
+            
+            // Create audio context synchronously (required by some browsers for user-initiated audio)
+            let audioContext;
+            try {
+                audioContext = new AudioContextClass();
+                console.log('🔊 Audio context created, state:', audioContext.state);
+            } catch (createError) {
+                console.error('❌ Failed to create audio context:', createError);
+                this.showMessage(`Cannot create audio context: ${createError.message || 'Unknown error'}`, 'error');
+                return;
+            }
+            
+            // Resume audio context if suspended (required by some browsers after user interaction)
+            if (audioContext.state === 'suspended') {
+                console.log('⏸️ Audio context suspended, resuming...');
+                try {
+                    await audioContext.resume();
+                    console.log('✅ Audio context resumed, new state:', audioContext.state);
+                } catch (resumeError) {
+                    console.error('❌ Failed to resume audio context:', resumeError);
+                    this.showMessage(`Cannot resume audio: ${resumeError.message || 'Browser blocked audio'}`, 'error');
+                    return;
+                }
+            }
+            
+            // Ensure audio context is running before scheduling notes
+            if (audioContext.state !== 'running') {
+                console.error('❌ Audio context not running after resume, state:', audioContext.state);
+                this.showMessage(`Audio not ready (state: ${audioContext.state}). Try clicking the button again.`, 'error');
+                return;
+            }
+            
+            // Use current time - audio context should be ready now
+            const now = audioContext.currentTime;
+            const startTime = Math.max(now, audioContext.currentTime + 0.01); // Use current time or slightly in future
+            console.log('🎵 Starting trumpet fanfare at time:', startTime, '(current time:', now, ', state:', audioContext.state, ')');
+            
+            // Fanfare pattern: "dun dit un dah!"
+            // Notes: C4, E4, G4, C5 (with varying durations)
+            // Increased gain values for louder sound
+            const notes = [
+                { freq: 261.63, duration: 0.25, gain: 1.0 },  // C4 - "dun" (strong, longer) - increased from 0.7
+                { freq: 329.63, duration: 0.15, gain: 0.9 },  // E4 - "dit" (quick) - increased from 0.6
+                { freq: 392.00, duration: 0.15, gain: 0.9 },  // G4 - "un" (quick) - increased from 0.6
+                { freq: 523.25, duration: 0.4, gain: 1.0 }   // C5 - "dah!" (triumphant, longest) - increased from 0.8
+            ];
+            
+            let currentTime = startTime;
+            
+            try {
+                notes.forEach((note, index) => {
+                    // Main oscillator (sawtooth for brass sound) - slightly detuned for character
+                    const osc1 = audioContext.createOscillator();
+                    const gain1 = audioContext.createGain();
+                    osc1.type = 'sawtooth';
+                    osc1.frequency.setValueAtTime(note.freq * 1.001, currentTime); // Slight detune for richness
+                    
+                    // Improved gain envelope with punchier attack
+                    gain1.gain.setValueAtTime(0, currentTime);
+                    gain1.gain.linearRampToValueAtTime(note.gain * 1.1, currentTime + 0.03); // Faster, stronger attack
+                    gain1.gain.linearRampToValueAtTime(note.gain, currentTime + 0.08); // Slight overshoot then settle
+                    gain1.gain.setValueAtTime(note.gain, currentTime + note.duration * 0.75); // Hold longer
+                    gain1.gain.linearRampToValueAtTime(0, currentTime + note.duration); // Decay
+                    
+                    // Second harmonic (octave above) - stronger for more presence
+                    const osc2 = audioContext.createOscillator();
+                    const gain2 = audioContext.createGain();
+                    osc2.type = 'sine';
+                    osc2.frequency.setValueAtTime(note.freq * 2, currentTime);
+                    
+                    gain2.gain.setValueAtTime(0, currentTime);
+                    gain2.gain.linearRampToValueAtTime(note.gain * 0.5, currentTime + 0.03); // Stronger harmonic
+                    gain2.gain.setValueAtTime(note.gain * 0.5, currentTime + note.duration * 0.75);
+                    gain2.gain.linearRampToValueAtTime(0, currentTime + note.duration);
+                    
+                    // Third harmonic (fifth above) - adds warmth and richness
+                    const osc3 = audioContext.createOscillator();
+                    const gain3 = audioContext.createGain();
+                    osc3.type = 'triangle'; // Softer harmonic
+                    osc3.frequency.setValueAtTime(note.freq * 3, currentTime);
+                    
+                    gain3.gain.setValueAtTime(0, currentTime);
+                    gain3.gain.linearRampToValueAtTime(note.gain * 0.25, currentTime + 0.04);
+                    gain3.gain.setValueAtTime(note.gain * 0.25, currentTime + note.duration * 0.7);
+                    gain3.gain.linearRampToValueAtTime(0, currentTime + note.duration);
+                    
+                    // Enhanced vibrato - more expressive and natural
+                    const lfo = audioContext.createOscillator();
+                    const lfoGain = audioContext.createGain();
+                    lfo.type = 'sine';
+                    lfo.frequency.setValueAtTime(5.5, currentTime); // Slightly slower, more natural
+                    // More vibrato on longer notes, less on quick ones
+                    const vibratoAmount = note.duration > 0.3 ? 15 : 10;
+                    lfoGain.gain.setValueAtTime(vibratoAmount, currentTime);
+                    
+                    // Connect vibrato to all oscillators
+                    lfo.connect(lfoGain);
+                    lfoGain.connect(osc1.frequency);
+                    lfoGain.connect(osc2.frequency);
+                    lfoGain.connect(osc3.frequency);
+                    
+                    // Create master gain node for overall volume control
+                    const masterGain = audioContext.createGain();
+                    masterGain.gain.setValueAtTime(1.0, currentTime);
+                    masterGain.connect(audioContext.destination);
+                    
+                    // Connect all oscillators
+                    osc1.connect(gain1);
+                    osc2.connect(gain2);
+                    osc3.connect(gain3);
+                    gain1.connect(masterGain);
+                    gain2.connect(masterGain);
+                    gain3.connect(masterGain);
+                    
+                    // Start/stop all oscillators
+                    lfo.start(currentTime);
+                    osc1.start(currentTime);
+                    osc2.start(currentTime);
+                    osc3.start(currentTime);
+                    
+                    osc1.stop(currentTime + note.duration);
+                    osc2.stop(currentTime + note.duration);
+                    osc3.stop(currentTime + note.duration);
+                    lfo.stop(currentTime + note.duration);
+                
+                    // Move to next note (with small gap)
+                    currentTime += note.duration + 0.05;
+                });
+                
+                const totalDuration = currentTime - startTime;
+                console.log('✅ Trumpet fanfare scheduled, total duration:', totalDuration);
+                console.log('   Audio context state:', audioContext.state);
+                console.log('   Notes scheduled from', startTime, 'to', currentTime);
+                
+                // Show brief success message
+                this.setActionStatus('Playing trumpet sound...', 2000);
+            } catch (scheduleError) {
+                console.error('❌ Failed to schedule notes:', scheduleError);
+                this.showMessage(`Failed to schedule sound: ${scheduleError.message || 'Unknown error'}`, 'error');
+                return;
+            }
+            
+        } catch (error) {
+            // Log error for debugging
+            console.error('❌ Trumpet sound error:', error);
+            console.error('   Error details:', error.message, error.stack);
+            
+            // Show user-friendly error message
+            const errorMsg = error.message || 'Unknown error';
+            this.showMessage(`Failed to play trumpet sound: ${errorMsg}`, 'error');
+            
+            // Also log to console for technical details
+            console.log('💡 Tip: Open browser console (F12 or Cmd+Option+I) for more details');
+        }
+    }
+
+    async showBlackjackCelebration() {
+        return new Promise(async (resolve) => {
             const overlay = document.getElementById('blackjack-celebration');
             if (!overlay) {
+                console.warn('⚠️ Blackjack celebration overlay not found');
                 resolve();
                 return;
             }
+
+            // Play trumpet sound immediately when celebration starts
+            console.log('🎺 Playing trumpet fanfare for blackjack!');
+            console.log('   Browser supports AudioContext:', !!(window.AudioContext || window.webkitAudioContext));
+            
+            // Try to play sound - don't await so celebration can start immediately
+            this.playTrumpetToot().catch(err => {
+                console.error('❌ Trumpet sound failed:', err);
+            });
 
             overlay.style.display = 'flex';
 
