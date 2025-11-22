@@ -1148,36 +1148,7 @@ export class BlackjackGame {
                 if (this.gameState.state === 'game_over') {
                     const result = this.gameState.result;
                     this.log(`Game ended immediately after deal. Result: ${result}`, 'action');
-                    
-                    // Show result message based on outcome
-                    if (result === 'blackjack') {
-                        this.log('Player wins with BLACKJACK!', 'win');
-                        await this.ui.showBlackjackCelebration();
-                        // Calculate blackjack win amount (3:2 payout = 1.5x bet profit)
-                        const handsArray = this.gameState?.player?.hands || [];
-                        let totalBet = 0;
-                        if (handsArray.length > 0) {
-                            totalBet = handsArray.reduce((sum, hand) => sum + (hand.bet || 0), 0);
-                        } else {
-                            totalBet = this.currentBet || 0;
-                        }
-                        const blackjackProfit = Math.floor(totalBet * 1.5);
-                        const formattedBlackjackProfit = blackjackProfit > 0 ? blackjackProfit.toLocaleString() : '0';
-                        this.ui.showMessage(`Blackjack! You Win! +$${formattedBlackjackProfit} 🎉`, 'win');
-                    } else if (result === 'push') {
-                        this.log('Round ends in PUSH (tie)', 'action');
-                        this.ui.showMessage("It's a Push - Tie!", 'info');
-                    } else if (result === 'loss') {
-                        this.log('Player loses - Dealer has BLACKJACK', 'bust');
-                        this.ui.showMessage('Dealer Blackjack - You Lose', 'error');
-                    } else if (result === 'win') {
-                        this.log('Player wins the round', 'win');
-                        this.ui.showMessage('You Win! 🎉', 'win');
-                    }
-                    
-                    // Disable game controls and show new game button
-                    this.ui.hideGameControls();
-                    this.ui.showBettingArea();
+                    await this.endGame();
                 } else {
                     // Game continues - show Your Turn
                     this.log('Player turn begins', 'action');
